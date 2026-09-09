@@ -2,6 +2,7 @@
 var manifest = {
   id: "ports",
   name: "Ports",
+  description: "Inspect listening ports and open SSH tunnels.",
   icon: "lucide:ethernet-port",
   window: { w: 940, h: 520 }
 };
@@ -156,73 +157,75 @@ function createApp({ React, useFw, useApi }) {
       await api.kill(r.pid, { force });
       await load();
     }, `killed ${r.process} (${r.pid})`);
-    return /* @__PURE__ */ React.createElement("div", { className: "ports-root" }, /* @__PURE__ */ React.createElement("div", { className: "ports-bar" }, /* @__PURE__ */ React.createElement(
+    return /* @__PURE__ */ React.createElement("div", { className: "desk-app ports-root" }, /* @__PURE__ */ React.createElement("div", { className: "app-toolbar", role: "toolbar", "aria-label": "Port filters" }, /* @__PURE__ */ React.createElement("label", { className: "app-search" }, /* @__PURE__ */ React.createElement(
       "input",
       {
-        className: "ports-input",
+        "aria-label": "Filter ports",
         value: filter,
         spellCheck: false,
-        placeholder: "filter port, process or bind",
+        placeholder: "Filter port, process, or address",
         onChange: (e) => setFilter(e.target.value)
       }
-    ), /* @__PURE__ */ React.createElement("label", { className: "ports-check" }, /* @__PURE__ */ React.createElement(
+    )), /* @__PURE__ */ React.createElement("label", { className: "app-check" }, /* @__PURE__ */ React.createElement(
       "input",
       {
         type: "checkbox",
         checked: mineOnly,
         onChange: (e) => setMineOnly(e.target.checked)
       }
-    ), "mine only"), /* @__PURE__ */ React.createElement("label", { className: "ports-check", title: "Re-forward ports you have forwarded before on this host" }, /* @__PURE__ */ React.createElement(
+    ), "My processes"), /* @__PURE__ */ React.createElement("label", { className: "app-check", title: "Re-forward ports you have forwarded before on this host" }, /* @__PURE__ */ React.createElement(
       "input",
       {
         type: "checkbox",
         checked: auto,
         onChange: (e) => setAuto(e.target.checked)
       }
-    ), "auto"), /* @__PURE__ */ React.createElement("button", { className: "ports-btn", onClick: load, title: "Refresh" }, "\u27F3"), /* @__PURE__ */ React.createElement("span", { className: "ports-spacer" }), note && /* @__PURE__ */ React.createElement("span", { className: "ports-note" }, note)), err && /* @__PURE__ */ React.createElement("div", { className: "ports-err" }, err), /* @__PURE__ */ React.createElement("div", { className: "ports-scroll" }, /* @__PURE__ */ React.createElement("table", { className: "ports-table" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { style: { width: 78 } }, "Port"), /* @__PURE__ */ React.createElement("th", { style: { width: 132 } }, "Bind"), /* @__PURE__ */ React.createElement("th", null, "Process"), /* @__PURE__ */ React.createElement("th", { style: { width: 74 } }, "PID"), /* @__PURE__ */ React.createElement("th", { style: { width: 96 } }, "Owner"), /* @__PURE__ */ React.createElement("th", { style: { width: 250 } }))), /* @__PURE__ */ React.createElement("tbody", null, shown.map((r) => {
+    ), "Restore tunnels"), /* @__PURE__ */ React.createElement("span", { className: "app-toolbar-spacer" }), /* @__PURE__ */ React.createElement("button", { className: "app-button", onClick: load, disabled: busy }, "Refresh")), err && /* @__PURE__ */ React.createElement("div", { className: "app-notice is-error", role: "alert" }, err), /* @__PURE__ */ React.createElement("div", { className: "ports-scroll" }, /* @__PURE__ */ React.createElement("table", { className: "ports-table", "aria-label": "Listening ports" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { style: { width: 78 } }, "Port"), /* @__PURE__ */ React.createElement("th", { style: { width: 150 } }, "Address"), /* @__PURE__ */ React.createElement("th", null, "Process"), /* @__PURE__ */ React.createElement("th", { style: { width: 74 } }, "PID"), /* @__PURE__ */ React.createElement("th", { style: { width: 96 } }, "Owner"), /* @__PURE__ */ React.createElement("th", { className: "ports-actions-heading" }, "Actions"))), /* @__PURE__ */ React.createElement("tbody", null, shown.map((r) => {
       const local = fwds[r.port];
-      return /* @__PURE__ */ React.createElement("tr", { key: `${r.port}-${r.bind}` }, /* @__PURE__ */ React.createElement("td", { className: "mono" }, r.port), /* @__PURE__ */ React.createElement("td", { className: "dim mono" }, r.bind, r.loopback && /* @__PURE__ */ React.createElement("span", { className: "ports-tag" }, "loopback")), /* @__PURE__ */ React.createElement("td", { className: "mono" }, r.process || /* @__PURE__ */ React.createElement("span", { className: "dim" }, "\u2014")), /* @__PURE__ */ React.createElement("td", { className: "dim mono" }, r.pid || ""), /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("span", { className: r.mine ? "ports-badge mine" : "ports-badge" }, r.mine ? "yours" : "system")), /* @__PURE__ */ React.createElement("td", { className: "ports-actions" }, local ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(
+      return /* @__PURE__ */ React.createElement("tr", { key: `${r.port}-${r.bind}` }, /* @__PURE__ */ React.createElement("td", { className: "mono" }, r.port), /* @__PURE__ */ React.createElement("td", { className: "dim mono" }, r.bind, r.loopback && /* @__PURE__ */ React.createElement("span", { className: "ports-tag" }, "loopback")), /* @__PURE__ */ React.createElement("td", { className: "mono" }, r.process || /* @__PURE__ */ React.createElement("span", { className: "dim" }, "\u2014")), /* @__PURE__ */ React.createElement("td", { className: "dim mono" }, r.pid || ""), /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("span", { className: r.mine ? "ports-badge mine" : "ports-badge" }, r.mine ? "yours" : "system")), /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("div", { className: "ports-actions" }, local ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(
         "button",
         {
-          className: "ports-btn accent",
+          className: "app-button",
           onClick: () => fw.net.openUrl(`http://localhost:${local}`)
         },
-        "open :",
+        "Open :",
         local
       ), /* @__PURE__ */ React.createElement(
         "button",
         {
-          className: "ports-btn",
+          className: "app-button",
           disabled: busy,
           onClick: () => unforward(r)
         },
-        "unforward"
+        "Disconnect"
       )) : /* @__PURE__ */ React.createElement(
         "button",
         {
-          className: "ports-btn",
+          className: "app-button",
           disabled: busy,
           onClick: () => forward(r),
           title: "Tunnel this port to your Mac"
         },
-        "forward"
+        "Forward"
       ), r.mine && r.pid > 1 && /* @__PURE__ */ React.createElement(
         "button",
         {
-          className: "ports-btn danger",
+          className: "app-button is-danger",
           disabled: busy,
-          onClick: () => kill(r, false),
-          title: "SIGTERM (shift-click for SIGKILL)",
-          onMouseDown: (e) => {
-            if (e.shiftKey) {
-              e.preventDefault();
-              kill(r, true);
-            }
-          }
+          onClick: async (e) => {
+            const force = e.shiftKey;
+            if (await fw.ui.confirm({
+              title: `${force ? "Force stop" : "Stop"} ${r.process}?`,
+              message: `This ends process ${r.pid} on this machine. Its open connections will close.`,
+              okLabel: force ? "Force stop" : "Stop process",
+              danger: true
+            })) kill(r, force);
+          },
+          title: "Stop this process \xB7 Shift-click to force stop"
         },
-        "kill"
-      )));
-    })))), /* @__PURE__ */ React.createElement("div", { className: "ports-status" }, shown.length, " of ", rows.length, " listening", " \xB7 ", rows.filter((r) => r.mine).length, " yours", " \xB7 ", Object.keys(fwds).length, " forwarded", " \xB7 ", Object.keys(remembered()).length, " remembered", auto && " \xB7 auto", busy && " \xB7 working\u2026"));
+        "Stop\u2026"
+      ))));
+    }))), !shown.length && /* @__PURE__ */ React.createElement("div", { className: "app-empty-state", role: "status" }, /* @__PURE__ */ React.createElement("h2", null, busy ? "Reading ports\u2026" : "No ports to show"), /* @__PURE__ */ React.createElement("p", null, busy ? "Checking this machine\u2019s listening connections." : filter || mineOnly ? "Try another filter or include all processes." : "Listening ports will appear here."))), /* @__PURE__ */ React.createElement("div", { className: "app-statusbar ports-status", role: "status" }, shown.length, " of ", rows.length, " listening", " \xB7 ", rows.filter((r) => r.mine).length, " yours", " \xB7 ", Object.keys(fwds).length, " forwarded", " \xB7 ", Object.keys(remembered()).length, " remembered", busy && " \xB7 Working\u2026", note && /* @__PURE__ */ React.createElement("span", { className: "ports-note" }, note)));
   };
 }
 export {

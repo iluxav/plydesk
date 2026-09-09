@@ -29,6 +29,8 @@ export function ImageViewer({ path, setTitle }: {
   /** null means fit-to-window; a number is an explicit scale. */
   const [zoom, setZoom] = useState<number | null>(null)
   const [pan, setPan] = useState({ x: 0, y: 0 })
+  const [viewport, setViewport] = useState({ w: 0, h: 0 })
+  const [panning, setPanning] = useState(false)
   const box = useRef<HTMLDivElement>(null)
 
   const name = path ? fw.path.base(path) : ''
@@ -48,13 +50,19 @@ export function ImageViewer({ path, setTitle }: {
   }, [fw, path])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => {
+    const el = box.current
+    if (!el) return
+    const resize = new ResizeObserver(() => setViewport({ w: el.clientWidth, h: el.clientHeight }))
+    resize.observe(el)
+    return () => resize.disconnect()
+  }, [])
 
   // Fit is computed rather than left to CSS so the status bar can report a
   // percentage, and so toggling to 1:1 has something to toggle back to.
   const fitScale = () => {
-    const el = box.current
-    if (!el || !dims) return 1
-    return Math.min(1, (el.clientWidth - 24) / dims.w, (el.clientHeight - 24) / dims.h)
+    if (!dims || !viewport.w || !viewport.h) return 1
+    return Math.max(0.01, Math.min(1, (viewport.w - 32) / dims.w, (viewport.h - 32) / dims.h))
   }
   const scale = zoom ?? fitScale()
 
@@ -65,21 +73,22 @@ export function ImageViewer({ path, setTitle }: {
   const drag = useRef<{ x: number; y: number } | null>(null)
 
   return (
-    <div className="flex flex-col h-full bg-desk-panel text-desk-fg">
-      <div className="flex items-center gap-1 px-2 py-1.5 border-b border-desk-line shrink-0">
+    <div className="desk-app preview-app">
+      <div className="app-toolbar" role="toolbar" aria-label="Image tools">
         <button onClick={() => nudgeZoom(1 / 1.25)} title="Zoom out"
-          className="px-2 py-0.5 text-xs rounded hover:bg-white/10">−</button>
+          aria-label="Zoom out" disabled={!dims || scale <= 0.05} className="app-button is-icon">−</button>
+        <div className="app-segmented" aria-label="Image size">
         <button onClick={() => { setZoom(null); setPan({ x: 0, y: 0 }) }} title="Fit to window"
-          className={`px-2 py-0.5 text-xs rounded hover:bg-white/10 ${
-            zoom === null ? 'text-desk-accent' : ''}`}>fit</button>
+          disabled={!dims} aria-pressed={zoom === null}>Fit</button>
         <button onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }) }} title="Actual size"
-          className={`px-2 py-0.5 text-xs rounded hover:bg-white/10 ${
-            zoom === 1 ? 'text-desk-accent' : ''}`}>1:1</button>
+          disabled={!dims} aria-pressed={zoom === 1}>Actual size</button>
+        </div>
         <button onClick={() => nudgeZoom(1.25)} title="Zoom in"
-          className="px-2 py-0.5 text-xs rounded hover:bg-white/10">+</button>
-        <button onClick={load} title="Reload"
-          className="px-2 py-0.5 rounded hover:bg-white/10"><Icon id="desk:refresh" size={13} /></button>
-        <span className="ml-2 text-xs text-desk-dim truncate">{name}</span>
+          aria-label="Zoom in" disabled={!dims || scale >= 16} className="app-button is-icon">+</button>
+        <span className="app-toolbar-spacer" />
+        <span className="app-toolbar-label">{name}</span>
+        <button onClick={load} title="Reload image" aria-label="Reload image" disabled={!path || busy}
+          className="app-button is-icon"><Icon id="desk:refresh" size={13} /></button>
       </div>
 
       <div
@@ -91,31 +100,25 @@ export function ImageViewer({ path, setTitle }: {
         }}
         onPointerDown={e => {
           if (scale <= fitScale()) return           // nothing to pan
+          e.preventDefault(); setPanning(true)
           drag.current = { x: e.clientX - pan.x, y: e.clientY - pan.y }
-          ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId)
+          e.currentTarget.setPointerCapture(e.pointerId)
         }}
         onPointerMove={e => {
           if (!drag.current) return
           setPan({ x: e.clientX - drag.current.x, y: e.clientY - drag.current.y })
         }}
-        onPointerUp={() => { drag.current = null }}
+        onPointerUp={() => { drag.current = null; setPanning(false) }}
+        onPointerCancel={() => { drag.current = null; setPanning(false) }}
+        onLostPointerCapture={() => { drag.current = null; setPanning(false) }}
         onDoubleClick={() => { setZoom(z => (z === 1 ? null : 1)); setPan({ x: 0, y: 0 }) }}
-        className="flex-1 min-h-0 overflow-hidden flex items-center justify-center relative"
-        style={{
-          // Checkerboard, so transparency reads as transparent rather than as
-          // whatever the panel colour happens to be.
-          backgroundImage:
-            'linear-gradient(45deg,#0000000d 25%,transparent 25%,transparent 75%,#0000000d 75%),' +
-            'linear-gradient(45deg,#0000000d 25%,transparent 25%,transparent 75%,#0000000d 75%)',
-          backgroundSize: '16px 16px',
-          backgroundPosition: '0 0, 8px 8px',
-          cursor: drag.current ? 'grabbing' : scale > fitScale() ? 'grab' : 'default',
-        }}
+        className="preview-canvas"
+        style={{ cursor: panning ? 'grabbing' : scale > fitScale() ? 'grab' : 'default' }}
       >
-        {busy && <p className="text-xs text-desk-dim">loading…</p>}
-        {err && <p className="px-6 text-xs text-desk-bad text-center">{err}</p>}
-        {!busy && !err && !path && <p className="text-xs text-desk-dim">no file</p>}
-        {src && (
+        {busy && <div className="app-empty-state" role="status"><span className="ui-spinner" /><p>Loading image…</p></div>}
+        {err && <div className="app-empty-state" role="alert"><Icon id="lucide:circle-alert" size={28} /><h2>Unable to show this image</h2><p className="select-text">{err}</p><button className="app-button" onClick={load}>Try again</button></div>}
+        {!busy && !err && !path && <div className="app-empty-state"><span className="app-empty-mark"><Icon id="lucide:mountain" size={28} /></span><h2>Open an image in Files</h2><p>Preview pictures from your connected machine.</p><button className="app-button" onClick={() => fw.ui.open('files', { host: fw.host.current() })}>Browse files</button></div>}
+        {src && !err && (
           <img
             src={src}
             alt={name}
@@ -135,13 +138,12 @@ export function ImageViewer({ path, setTitle }: {
         )}
       </div>
 
-      <div className="flex items-center gap-2 px-3 py-1.5 text-[11px] text-desk-dim
-                      border-t border-desk-line shrink-0">
+      <div className="app-statusbar" role="status">
         {dims && <span>{dims.w} × {dims.h}</span>}
         {size > 0 && <span>· {fw.fmt.size(size)}</span>}
         {dims && <span>· {Math.round(scale * 100)}%</span>}
         {truncated && <span className="text-desk-bad">· truncated — file is larger than the read cap</span>}
-        <span className="ml-auto opacity-70">⌘-scroll to zoom · double-click for 1:1</span>
+        <span className="app-status-end app-status-optional">⌘ Scroll to zoom · Double-click for actual size</span>
       </div>
     </div>
   )

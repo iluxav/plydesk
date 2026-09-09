@@ -1,4 +1,5 @@
 import { fw } from '../fw'
+import { Icon } from '../wm/Icon'
 import { useContextMenu, type MenuItem } from '../wm/ContextMenu'
 import { useDrag, dropProps } from '../wm/dnd'
 import { useDialog } from '../wm/Dialog'
@@ -6,18 +7,19 @@ import { useDialog } from '../wm/Dialog'
 export interface Shortcut { label: string; path: string; icon: string }
 
 export const DEFAULT_SHORTCUTS: Shortcut[] = [
-  { label: 'Home',    path: '~',        icon: '🏠' },
-  { label: 'Root',    path: '/',        icon: '💽' },
-  { label: 'etc',     path: '/etc',     icon: '⚙️' },
-  { label: 'var/log', path: '/var/log', icon: '📜' },
-  { label: 'tmp',     path: '/tmp',     icon: '🗂' },
-  { label: 'opt',     path: '/opt',     icon: '📦' },
+  { label: 'Home',    path: '~',        icon: 'lucide:house' },
+  { label: 'File system', path: '/', icon: 'lucide:hard-drive' },
+  { label: 'Configuration', path: '/etc', icon: 'lucide:settings-2' },
+  { label: 'Logs', path: '/var/log', icon: 'lucide:scroll-text' },
+  { label: 'Temporary', path: '/tmp', icon: 'lucide:folder' },
+  { label: 'Applications', path: '/opt', icon: 'lucide:package' },
 ]
 
 export function FileSidebar({
-  cwd, shortcuts, dropId, onGo, onChange,
+  cwd, home, shortcuts, dropId, onGo, onChange,
 }: {
   cwd: string
+  home: string
   shortcuts: Shortcut[]
   dropId: string
   onGo: (path: string) => void
@@ -43,17 +45,17 @@ export function FileSidebar({
     },
   ]
 
-  const pinned = shortcuts.some(s => s.path === cwd)
+  const pinned = shortcuts.some(s => s.path === cwd || (s.path === '~' && cwd === home))
 
   return (
-    <div className="w-44 shrink-0 flex flex-col border-r border-desk-line bg-black/20">
-      <div className="px-3 py-1 text-[10px] uppercase tracking-wide text-desk-dim shrink-0">
-        Shortcuts
+    <div className="files-sidebar">
+      <div className="files-sidebar-heading">
+        Favorites
       </div>
 
-      <div className="flex-1 overflow-auto py-0.5">
+      <div className="files-sidebar-list">
         {shortcuts.map((s, i) => {
-          const active = cwd === s.path
+          const active = cwd === s.path || (s.path === '~' && cwd === home)
           const isOver = drag?.over?.id === dropId && drag.over.arg === s.path
           return (
             <button
@@ -61,11 +63,13 @@ export function FileSidebar({
               {...dropProps(dropId, s.path)}
               onClick={() => onGo(s.path)}
               onContextMenu={ev => menu.open(ev, itemsFor(s, i))}
-              className={`w-full flex items-center gap-2 px-3 py-1 text-xs text-left truncate
-                          ${isOver ? 'bg-desk-accent/50 ring-1 ring-inset ring-desk-accent'
-                                   : active ? 'bg-white/10' : 'hover:bg-white/5'}`}
+              aria-current={active ? 'location' : undefined}
+              className={`files-shortcut ${isOver ? 'is-drop' : active ? 'is-active' : ''}`}
             >
-              <span className="w-4 shrink-0 pointer-events-none">{s.icon}</span>
+              <Icon id={s.icon.includes(':') ? s.icon : ({
+                '🏠': 'lucide:house', '💽': 'lucide:hard-drive', '⚙️': 'lucide:settings-2',
+                '📜': 'lucide:scroll-text', '🗂': 'lucide:folder', '📦': 'lucide:package', '📌': 'lucide:pin',
+              } as Record<string, string>)[s.icon] || s.icon} size={15} />
               <span className="truncate pointer-events-none">{s.label}</span>
             </button>
           )
@@ -74,11 +78,10 @@ export function FileSidebar({
 
       <button
         disabled={pinned}
-        onClick={() => onChange([...shortcuts, { label: fw.path.base(cwd) || '/', path: cwd, icon: '📌' }])}
-        className="shrink-0 m-2 px-2 py-1 rounded text-[11px] border border-desk-line
-                   hover:bg-white/10 text-desk-dim disabled:opacity-30"
+        onClick={() => onChange([...shortcuts, { label: fw.path.base(cwd) || '/', path: cwd, icon: 'lucide:pin' }])}
+        className="files-pin"
       >
-        {pinned ? 'Pinned' : '+ Pin this folder'}
+        <Icon id="lucide:pin" size={12} />{pinned ? 'In Favorites' : 'Add to Favorites'}
       </button>
     </div>
   )

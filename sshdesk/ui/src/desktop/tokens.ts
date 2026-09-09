@@ -28,9 +28,9 @@ export function declareCoreTokens() {
     // The alpha is deliberate — these sit over the wallpaper.
     // Chrome. One bar and one dock for the whole desktop, so they take their
     // colours from whichever machine has focus.
-    menubar:   { type: 'color', default: '#ffffff12', label: 'Menu bar' },
-    dock:      { type: 'color', default: '#ffffff12', label: 'Dock' },
-    titlebar:  { type: 'color', default: '#ffffff0a', label: 'Window title bar' },
+    menubar:   { type: 'color', default: '#202934c9', label: 'Menu bar' },
+    dock:      { type: 'color', default: '#4a556270', label: 'Dock' },
+    titlebar:  { type: 'color', default: '#ffffff07', label: 'Window title bar' },
     border:    { type: 'color', default: '#2b2f38',   label: 'Window border' },
     selection: { type: 'color', default: '#60a5fa4d', label: 'Selection' },
 

@@ -28,6 +28,8 @@ export function Packages({ setTitle }: { setTitle?: (t: string) => void }) {
   const [err, setErr] = useState('')
   const [note, setNote] = useState('')
   const scroller = useRef<HTMLDivElement>(null)
+  const request = useRef(0)
+  const [detailsError, setDetailsError] = useState('')
 
   useEffect(() => { setTitle?.('Packages') }, [setTitle])
 
@@ -36,14 +38,17 @@ export function Packages({ setTitle }: { setTitle?: (t: string) => void }) {
   }, [fw])
 
   const loadTab = useCallback(async (which: Tab, q = '') => {
+    const current = ++request.current
     setBusy(true); setErr(''); setNote(''); setSel(null); setDetails(null)
     try {
       const list = which === 'installed' ? await fw.pkg.installed()
                  : which === 'updates'   ? await fw.pkg.updates()
-                 : await fw.pkg.search(q)
+                 : q.trim() ? await fw.pkg.search(q.trim()) : []
+      if (current !== request.current) return
       setItems(list)
       if (which === 'search' && q && list.length === 0) setNote(`nothing matches “${q}”`)
-    } catch (e) { setErr(String(e)); setItems([]) } finally { setBusy(false) }
+    } catch (e) { if (current === request.current) { setErr(String(e)); setItems([]) } }
+    finally { if (current === request.current) setBusy(false) }
   }, [fw])
 
   useEffect(() => { loadTab('installed') }, [loadTab])
@@ -53,12 +58,14 @@ export function Packages({ setTitle }: { setTitle?: (t: string) => void }) {
   useEffect(() => {
     if (!sel) return
     let live = true
-    setDetails(null)
-    fw.pkg.details(sel.id).then(d => { if (live) setDetails(d) }).catch(() => {})
+    setDetails(null); setDetailsError('')
+    fw.pkg.details(sel.id).then(d => { if (live) setDetails(d) })
+      .catch(e => { if (live) setDetailsError(String(e)) })
     return () => { live = false }
   }, [fw, sel])
 
   const act = async (pkg: PkgItem, verb: 'install' | 'remove') => {
+    if (verb === 'remove' && !await fw.ui.confirm({ title: `Remove ${pkg.name}?`, message: 'This uninstalls the package from this machine.', okLabel: 'Remove', danger: true })) return
     const password = await fw.sys.sudoPassword(
       `Needed to ${verb} ${pkg.name} on this machine`)
     if (!password) return
@@ -68,9 +75,9 @@ export function Packages({ setTitle }: { setTitle?: (t: string) => void }) {
       const msg = verb === 'install'
         ? await fw.pkg.install(pkg.name, password)
         : await fw.pkg.remove(pkg.name, password)
-      setNote(msg)
       // The list is now stale by definition, so re-read rather than patch it.
       await loadTab(tab, query)
+      setNote(msg)
     } catch (e) {
       const text = String(e)
       if (/password|authentic/i.test(text)) fw.sys.forgetPassword()
@@ -86,128 +93,80 @@ export function Packages({ setTitle }: { setTitle?: (t: string) => void }) {
     catch (e) { setErr(String(e)) } finally { setWorking('') }
   }
 
-  const rows = useMemo(() => items, [items])
+  const rows = useMemo(() => tab === 'search' || !query.trim() ? items : items.filter(p =>
+    `${p.name} ${p.summary}`.toLowerCase().includes(query.trim().toLowerCase())), [items, query, tab])
   const virt = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scroller.current,
-    estimateSize: () => 44,
+    estimateSize: () => 61,
     overscan: 12,
   })
 
+
   return (
-    <div className="flex flex-col h-full bg-desk-panel text-desk-fg">
-      <div className="flex items-center gap-2 px-2 py-1.5 border-b border-desk-line shrink-0">
-        <div className="flex rounded-md overflow-hidden border border-desk-line text-[11px]">
-          {(['installed', 'search', 'updates'] as Tab[]).map(k => (
-            <button key={k}
-              onClick={() => { setTab(k); loadTab(k, query) }}
-              className={`px-2.5 py-1 ${tab === k
-                ? 'bg-desk-accent/20 text-desk-fg' : 'text-desk-dim hover:bg-white/5'}`}>
-              {k}
-            </button>
-          ))}
+    <div className="desk-app packages-app">
+      <div className="app-toolbar" role="toolbar" aria-label="Package browser">
+        <div className="app-segmented" aria-label="Package collection">
+          {(['installed', 'search', 'updates'] as Tab[]).map(k => <button key={k} aria-pressed={tab === k}
+            disabled={!!working} onClick={() => { setTab(k); setQuery(''); void loadTab(k) }}>
+            {k === 'installed' ? 'Installed' : k === 'search' ? 'Discover' : 'Updates'}</button>)}
         </div>
-
-        <div className="flex items-center gap-1 flex-1 min-w-0">
-          <Icon id="desk:search" size={13} className="text-desk-dim" />
-          <input
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            onKeyDown={e => {
-              if (e.key !== 'Enter') return
-              setTab('search'); loadTab('search', query)
-            }}
-            placeholder="search packages, then Enter"
-            className="flex-1 min-w-0 px-2 py-1 text-xs rounded border border-desk-line
-                       bg-desk-bg outline-none focus:border-desk-accent" />
-        </div>
-
-        <button onClick={refresh} disabled={!!working}
-          title="Refresh the package index"
-          className="px-2 py-0.5 rounded hover:bg-white/10 disabled:opacity-40">
-          <Icon id="desk:refresh" size={13} />
-        </button>
+        <label className="app-search"><Icon id="desk:search" size={14} />
+          <input value={query} aria-label={tab === 'search' ? 'Search packages' : 'Filter packages'} spellCheck={false}
+            placeholder={tab === 'search' ? 'Search packages, then Return' : 'Filter by name or description'}
+            onChange={e => setQuery(e.target.value)} onKeyDown={e => {
+              if (e.key === 'Enter' && tab === 'search') void loadTab('search', query)
+              if (e.key === 'Escape') setQuery('')
+            }} /></label>
+        {tab === 'search' && <button className="app-button" disabled={busy || !!working || !query.trim()}
+          onClick={() => void loadTab('search', query)}>Search</button>}
+        <button className="app-button" onClick={() => void refresh()} disabled={!!working || busy}
+          title="Refresh the remote package index">Refresh index</button>
       </div>
-
-      <div className="flex flex-1 min-h-0">
-        <div ref={scroller} className="flex-1 overflow-auto min-w-0">
-          <div style={{ height: virt.getTotalSize(), position: 'relative' }}>
-            {virt.getVirtualItems().map(v => {
-              const p = rows[v.index]
-              const isSel = sel?.id === p.id
-              return (
-                <div key={p.id}
-                  onClick={() => setSel(p)}
-                  style={{ position: 'absolute', top: 0, left: 0, right: 0,
-                           height: v.size, transform: `translateY(${v.start}px)` }}
-                  className={`flex items-center gap-2 px-3 text-xs cursor-default
-                    ${isSel ? 'bg-desk-accent/25' : 'hover:bg-[var(--pkg-row-hover)]'}`}>
-                  <Icon token={p.installed ? 'packages.installed' : 'packages.available'}
-                        size={15} />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate">
-                      {p.name}
-                      <span className="ml-2 text-[10px] text-desk-dim font-mono">{p.version}</span>
-                    </div>
-                    <div className="truncate text-[11px] text-desk-dim">{p.summary}</div>
-                  </div>
-                  <button
-                    disabled={!!working}
-                    onClick={e => { e.stopPropagation(); act(p, p.installed ? 'remove' : 'install') }}
-                    className={`px-2 py-0.5 rounded text-[11px] border disabled:opacity-40
-                      ${p.installed
-                        ? 'border-desk-line text-desk-dim hover:text-desk-bad hover:border-desk-bad'
-                        : 'border-desk-accent/60 text-desk-accent hover:bg-desk-accent/15'}`}>
-                    {p.installed ? 'remove' : 'install'}
-                  </button>
-                </div>
-              )
-            })}
+      {err && <div className="app-notice is-error" role="alert">{err}</div>}
+      <div className="app-split">
+        <div ref={scroller} className="packages-list" aria-label="Packages">
+          {busy ? <div className="app-empty-state" role="status"><span className="ui-spinner" /><p>Reading packages…</p></div>
+            : <div style={{ height: virt.getTotalSize(), position: 'relative' }}>
+              {virt.getVirtualItems().map(v => {
+                const p = rows[v.index]
+                return <button key={p.id} className="package-row" aria-pressed={sel?.id === p.id}
+                  aria-label={`Details for ${p.name}`} onClick={() => setSel(p)}
+                  style={{ height: v.size, transform: `translateY(${v.start}px)` }}>
+                  <span><Icon token={p.installed ? 'packages.installed' : 'packages.available'} host={fw.host.current()} size={17} /></span>
+                  <span><strong>{p.name}<span className="package-version">{p.version}</span></strong><small>{p.summary}</small></span>
+                  <Icon id="desk:chevron-right" size={14} />
+                </button>
+              })}
+            </div>}
+          {!busy && !rows.length && <div className="app-empty-state">
+            <span className="app-empty-mark"><Icon id="desk:app" size={28} /></span>
+            <h2>{query.trim() ? 'No packages found' : tab === 'search' ? 'Find software for this machine' : tab === 'updates' ? 'No updates available' : 'No packages to show'}</h2>
+            <p>{query.trim() ? 'Try another name or a shorter search.' : tab === 'search' ? 'Search your machine’s package repositories by name.' : tab === 'updates' ? 'The current package index has no pending updates.' : 'Installed packages will appear here.'}</p>
+          </div>}
+        </div>
+        {sel && <aside className="app-inspector" aria-label="Package details">
+          <header className="app-inspector-header"><div><h2>{sel.name}</h2><p className="app-mono">{sel.version} · {sel.arch}</p></div>
+            <button className="app-button is-icon" aria-label="Close package details" onClick={() => setSel(null)}><Icon id="lucide:x" size={14} /></button></header>
+          <div className="app-inspector-actions"><span className={`app-state ${sel.installed ? 'is-good' : ''}`}>{sel.installed ? 'Installed' : tab === 'updates' ? 'Update available' : 'Available'}</span>
+            <span className="app-toolbar-spacer" />
+            <button className={`app-button ${sel.installed ? 'is-danger' : 'is-primary'}`} disabled={!!working}
+              onClick={() => void act(sel, sel.installed ? 'remove' : 'install')}>{sel.installed ? 'Remove…' : 'Install…'}</button></div>
+          <div className="app-inspector-body"><p>{sel.summary}</p>
+            {details ? <>
+              {details.description && <p className="package-description">{details.description}</p>}
+              <dl>{details.size > 0 && <><dt>Size</dt><dd>{fw.fmt.size(details.size)}</dd></>}
+                {details.license && details.license !== 'unknown' && <><dt>License</dt><dd>{details.license}</dd></>}
+                <dt>Repository</dt><dd>{sel.repo || 'Not specified'}</dd>
+                {details.url && <><dt>Website</dt><dd>{details.url}</dd></>}
+              </dl></> : detailsError ? <p role="alert" className="text-desk-bad">{detailsError}</p> : <p className="app-dim" role="status">Loading details…</p>}
           </div>
-          {!busy && !rows.length && (
-            <p className="p-6 text-center text-xs text-desk-dim">
-              {note || (tab === 'search' ? 'type a name and press Enter' : 'nothing here')}
-            </p>
-          )}
-        </div>
-
-        {sel && (
-          <div className="w-72 shrink-0 border-l border-desk-line overflow-auto p-3 text-xs">
-            <div className="text-sm mb-1">{sel.name}</div>
-            <div className="font-mono text-[11px] text-desk-dim mb-2 break-all">
-              {sel.version} · {sel.arch}
-            </div>
-            <p className="text-desk-dim mb-3">{sel.summary}</p>
-            {details ? (
-              <>
-                {details.description && (
-                  <p className="whitespace-pre-wrap mb-3">{details.description}</p>
-                )}
-                <dl className="text-[11px] text-desk-dim space-y-1">
-                  {details.size > 0 && (
-                    <div>installed size · {fw.fmt.size(details.size)}</div>
-                  )}
-                  {details.license && details.license !== 'unknown' && (
-                    <div>licence · {details.license}</div>
-                  )}
-                  <div className="break-all">repo · {sel.repo || '—'}</div>
-                  {details.url && <div className="break-all">{details.url}</div>}
-                </dl>
-              </>
-            ) : <p className="text-desk-dim">loading details…</p>}
-          </div>
-        )}
+        </aside>}
       </div>
-
-      <div className="flex items-center gap-2 px-3 py-1.5 text-[11px] text-desk-dim
-                      border-t border-desk-line shrink-0">
-        <span>{rows.length} {tab === 'updates' ? 'updates' : 'packages'}</span>
-        {backend && <span>· {backend}</span>}
-        {busy && <span>· loading…</span>}
-        {working && <span className="text-desk-accent">· {working}</span>}
-        {note && !working && <span className="text-desk-ok truncate">· {note}</span>}
-        {err && <span className="text-desk-bad truncate">· {err}</span>}
-      </div>
+      <footer className="app-statusbar" role="status"><span>{rows.length.toLocaleString()} {tab === 'updates' ? 'updates' : 'packages'}</span>
+        {working ? <><span className="ui-spinner" /><span>{working}</span></> : note && <span className="truncate">{note}</span>}
+        {backend && <span className="app-status-end">{backend} · {fw.host.current().split('@').at(-1)}</span>}
+      </footer>
     </div>
   )
 }

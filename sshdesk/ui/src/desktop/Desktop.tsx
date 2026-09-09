@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useWM, nextId } from '../wm/store'
+import { useWM, nextId, type Win } from '../wm/store'
 import { Window } from '../wm/Window'
 import { HostScope } from '../wm/host'
 import { Requires } from '../wm/Requires'
@@ -105,6 +105,7 @@ export function Desktop() {
         title: 'Administrator password',
         label: `Needed to run a privileged command on ${host}`,
         placeholder: 'password',
+        password: true,
         okLabel: 'Run',
       }))
   }, [dlg])
@@ -119,10 +120,15 @@ export function Desktop() {
       const existing = winsRef.current.find(w =>
         w.appId === appId && w.host === host && props?.path && (w.props as any)?.path === props.path)
       if (existing) { dispatch({ t: 'focus', id: existing.id }); return }
-      const n = winsRef.current.filter(w => w.appId === appId).length
+      const n = winsRef.current.filter(w => w.host === host).length
+      const paneW = Math.floor(window.innerWidth / Math.max(1, hostsRef.current.length))
+      const paneH = window.innerHeight - 38
+      const w = Math.min(app.w, Math.max(280, paneW - 48))
+      const h = Math.min(app.h, Math.max(200, paneH - 110))
       dispatch({ t: 'open', win: {
         id: nextId(appId), appId, host, title: app.title, icon: app.icon,
-        x: 100 + (n % 6) * 30, y: 70 + (n % 6) * 28, w: app.w, h: app.h, props,
+        x: Math.max(0, Math.min(40 + (n % 6) * 28, paneW - w)),
+        y: Math.max(0, Math.min(32 + (n % 6) * 26, paneH - h)), w, h, props,
       }})
     })
   }, [dispatch])
@@ -153,7 +159,7 @@ export function Desktop() {
     })
   }, [dispatch])
 
-  if (!active || adding) {
+  if (!active) {
     return (
       <Connections
         connected={hosts}
@@ -164,8 +170,8 @@ export function Desktop() {
   }
 
   return (
-    <div className="relative w-full h-full overflow-hidden
-                    bg-[radial-gradient(ellipse_at_30%_0%,#1b2430_0%,#0f1116_60%)]">
+    <div className="desktop-shell">
+      <div className="absolute inset-0" inert={adding}>
       <MenuBar
         hosts={hosts}
         active={active}
@@ -180,10 +186,9 @@ export function Desktop() {
       {/* The picture sits under everything, including the menu bar, which is
           translucent so it picks the image up. */}
 
-      {/* top-8 clears the menu bar; bottom-0 because the dock hides itself and
-          floats over the desktop rather than reserving a strip of it. */}
-      <div className="absolute inset-0 top-8 bottom-0 flex">
-        {hosts.map((h, i) => {
+      {/* Each machine owns its window coordinates beneath the shared menu bar. */}
+      <div className="desktop-panes">
+        {hosts.map(h => {
           const mine = state.wins.filter(w => w.host === h)
           const focused = h === active
           return (
@@ -196,9 +201,9 @@ export function Desktop() {
               // The pane paints the background rather than the body, so a
               // machine can have its own — and the picture sits above it.
               style={{ background: 'var(--color-desk-bg)' }}
-              className={`relative flex-1 min-w-0 overflow-hidden transition-colors
-                          ${i > 0 ? 'border-l border-desk-line' : ''}`}
+              className="desktop-pane"
             >
+              {!wallpapers[h] && <div className="desktop-ambient" aria-hidden />}
               {wallpapers[h] && (
                 <>
                   <div aria-hidden
@@ -210,45 +215,46 @@ export function Desktop() {
                        style={{ background: 'var(--color-desk-tint)' }} />
                 </>
               )}
-              {hosts.length > 1 && (
-                <div className={`absolute top-0 inset-x-0 h-6 px-3 flex items-center gap-2
-                                 text-[10px] pointer-events-none z-0
-                                 ${focused ? 'text-desk-fg/70' : 'text-desk-dim/50'}`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${
-                    focused ? 'bg-desk-ok' : 'bg-desk-dim/60'}`} />
-                  <span className="truncate">{h}</span>
-                </div>
-              )}
+              {hosts.length > 1 && <div className="desktop-pane-heading">
+                <span className="status-dot" /><span>{h}</span>
+              </div>}
+              {!mine.some(w => !w.minimized) && <div className="desktop-idle">
+                <span className="desktop-idle-label"><span className="status-dot" /> Connected over SSH</span>
+                <h2>{fw.conns.list().find(c => `${c.user}@${c.host}` === h)?.name || h.split('@')[1]}</h2>
+                <p>Open an app from the dock to get started.</p>
+              </div>}
 
               <DesktopFiles host={h} active={focused} />
 
-              {mine.map(w => {
-                const app = APPS.find(a => a.id === w.appId)
-                if (!app) return null
-                const C = app.component
-                return (
-                  <Window key={w.id} win={w}>
-                    <HostScope host={w.host}>
-                      <AppBoundary name={app.title}>
-                      <Requires requires={app.requires} name={app.title}>
-                        <C
-                          winId={w.id}
-                          host={w.host}
-                          setTitle={(title: string) => dispatch({ t: 'title', id: w.id, title })}
-                          {...(w.props ?? {})}
-                        />
-                      </Requires>
-                      </AppBoundary>
-                    </HostScope>
-                  </Window>
-                )
-              })}
+              {mine.map(w => <DesktopWindow key={w.id} win={w} />)}
             </div>
           )
         })}
       </div>
 
-      <Dock host={active} paneCount={hosts.length} />
+      <Dock host={active} />
+      </div>
+      {adding && <div className="connection-overlay">
+        <Connections connected={hosts} onConnected={connected} onCancel={() => setAdding(false)} />
+      </div>}
     </div>
   )
+}
+
+/** A stable title callback keeps app effects from restarting on shell updates. */
+function DesktopWindow({ win }: { win: Win }) {
+  const { dispatch } = useWM()
+  const setTitle = useCallback((title: string) => dispatch({ t: 'title', id: win.id, title }), [dispatch, win.id])
+  const app = APPS.find(a => a.id === win.appId)
+  if (!app) return null
+  const Component = app.component
+  return <Window win={win}>
+    <HostScope host={win.host}>
+      <AppBoundary name={app.title}>
+        <Requires requires={app.requires} name={app.title}>
+          <Component {...(win.props ?? {})} winId={win.id} host={win.host} setTitle={setTitle} />
+        </Requires>
+      </AppBoundary>
+    </HostScope>
+  </Window>
 }

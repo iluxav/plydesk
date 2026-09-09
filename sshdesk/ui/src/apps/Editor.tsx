@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useFw } from '../wm/host'
+import { Icon } from '../wm/Icon'
 import { monaco, languageFor } from './monaco-setup'
 
 export function Editor({ path, setTitle }: { path?: string; setTitle?: (t: string) => void }) {
@@ -12,6 +13,8 @@ export function Editor({ path, setTitle }: { path?: string; setTitle?: (t: strin
   const [dirty, setDirty] = useState(false)
   const [err, setErr] = useState('')
   const [lang, setLang] = useState('plaintext')
+  const [wrap, setWrap] = useState(false)
+  const [position, setPosition] = useState({ line: 1, column: 1 })
   const [meta, setMeta] = useState<{ size: number; truncated: boolean } | null>(null)
 
   const name = path ? fw.path.base(path) : 'untitled'
@@ -19,7 +22,7 @@ export function Editor({ path, setTitle }: { path?: string; setTitle?: (t: strin
   useEffect(() => { titleRef.current = setTitle })
 
   const save = useCallback(async () => {
-    if (!path || !model.current) return
+    if (!path || !model.current || ed.current?.getOption(monaco.editor.EditorOption.readOnly)) return
     setErr(''); setStatus('saving…')
     try {
       await fw.fs.write(path, model.current.getValue())
@@ -30,23 +33,26 @@ export function Editor({ path, setTitle }: { path?: string; setTitle?: (t: strin
       setStatus('')
       setErr(String(e))          // permission is the machine's call; just show it
     }
-  }, [path])
+  }, [fw, path])
 
   // create the editor once
   useEffect(() => {
-    if (!host.current) return
+    if (!host.current || !path) return
     const editor = monaco.editor.create(host.current, {
       theme: 'sshdesk',
       automaticLayout: true,
-      fontSize: 12,
+      fontSize: 13,
+      padding: { top: 12, bottom: 12 },
+      lineHeight: 21,
       fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-      minimap: { enabled: true, maxColumn: 60 },
+      minimap: { enabled: false },
       scrollBeyondLastLine: false,
       renderWhitespace: 'selection',
       tabSize: 2,
       readOnly: !path,
     })
     ed.current = editor
+    editor.onDidChangeCursorPosition(e => setPosition({ line: e.position.lineNumber, column: e.position.column }))
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => { void saveRef.current() })
     return () => { editor.dispose(); model.current?.dispose() }
   }, [path])
@@ -81,52 +87,39 @@ export function Editor({ path, setTitle }: { path?: string; setTitle?: (t: strin
         ed.current?.updateOptions({ readOnly: r.truncated })
         titleRef.current?.(`${name} — ${path}`)
       })
-      .catch(e => { setStatus(''); setErr(String(e)) })
+      .catch(e => { if (!cancelled) { setStatus(''); setErr(String(e)) } })
     return () => { cancelled = true }
-  }, [path, name])
+  }, [fw, path, name])
+
 
   return (
-    <div className="flex flex-col h-full bg-desk-panel text-desk-fg">
-      <div className="flex items-center gap-2 px-2 py-1.5 border-b border-desk-line shrink-0 text-xs">
-        <button
-          onClick={() => void save()}
-          disabled={!dirty || !path}
-          title="Save (⌘S)"
-          className="px-2 py-1 rounded hover:bg-white/10 disabled:opacity-30
-                     border border-desk-line"
-        >
-          Save
-        </button>
-        <span className={`truncate ${dirty ? 'text-desk-accent' : 'text-desk-dim'}`}>
-          {dirty ? '● ' : ''}{path ?? 'no file'}
-        </span>
-        <span className="ml-auto flex items-center gap-2 text-desk-dim shrink-0">
-          <select
-            value={lang}
-            onChange={e => {
-              setLang(e.target.value)
-              if (model.current) monaco.editor.setModelLanguage(model.current, e.target.value)
-            }}
-            className="bg-black/30 border border-desk-line rounded px-1 py-0.5 outline-none"
-          >
-            {monaco.languages.getLanguages().map(l => l.id).sort()
-              .map(id => <option key={id} value={id}>{id}</option>)}
-          </select>
-          {meta && <span>{fw.fmt.size(meta.size)}</span>}
-        </span>
+    <div className="desk-app editor-app">
+      <div className="app-toolbar" role="toolbar" aria-label="Editor tools">
+        <button className="app-button" onClick={() => void save()} disabled={!dirty || !path || meta?.truncated}
+          title="Save (⌘S)"><Icon id="desk:upload" size={14} />Save</button>
+        <div className="editor-file" title={path}>{dirty && <i className="editor-dirty" aria-label="Unsaved changes" />}
+          <span>{path ? name : 'No document open'}</span></div>
+        <button className="app-button" disabled={!path || status === 'loading…' || !!err} aria-label="Find in document"
+          onClick={() => ed.current?.getAction('actions.find')?.run()}><Icon id="desk:search" size={13} />Find</button>
+        <button className="app-button" aria-pressed={wrap} disabled={!path}
+          onClick={() => { setWrap(!wrap); ed.current?.updateOptions({ wordWrap: wrap ? 'off' : 'on' }) }}>Wrap lines</button>
       </div>
-
-      {err && (
-        <div className="px-3 py-1.5 text-xs bg-desk-bad/15 text-desk-bad
-                        border-b border-desk-bad/30 shrink-0 select-text break-all">{err}</div>
-      )}
-      {status && !err && (
-        <div className="px-3 py-1 text-[11px] text-desk-dim border-b border-desk-line shrink-0">
-          {status}
-        </div>
-      )}
-
-      <div ref={host} className="flex-1 min-h-0" />
+      {err && <div className="app-notice is-error" role="alert">{err}</div>}
+      {meta?.truncated && <div className="app-notice is-warning">This file exceeds the read limit. The available text is open read-only.</div>}
+      <div className="editor-content"><div ref={host} className="editor-surface" />
+        {!path && <div className="app-empty-state"><span className="app-empty-mark"><Icon id="desk:editor" size={28} /></span>
+          <h2>Open a file to start editing</h2><p>Browse this machine in Files, then open a text file or source document.</p>
+          <button className="app-button" onClick={() => fw.ui.open('files', { host: fw.host.current() })}><Icon id="desk:folder" size={14} />Browse files</button>
+        </div>}
+      </div>
+      <footer className="app-statusbar" role="status">
+        <span>{path ? dirty ? 'Unsaved changes' : status || 'Saved on machine' : 'Editor'}</span>
+        {path && <><span className="app-status-optional">Ln {position.line}, Col {position.column}</span>
+          <span className="app-toolbar-spacer" /><select className="editor-language" aria-label="Document language" value={lang}
+            onChange={e => { setLang(e.target.value); if (model.current) monaco.editor.setModelLanguage(model.current, e.target.value) }}>
+            {monaco.languages.getLanguages().map(l => l.id).sort().map(id => <option key={id} value={id}>{id}</option>)}
+          </select>{meta && <span>{fw.fmt.size(meta.size)}</span>}</>}
+      </footer>
     </div>
   )
 }

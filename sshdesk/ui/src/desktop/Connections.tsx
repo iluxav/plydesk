@@ -1,209 +1,140 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { fw, type SavedConn } from '../fw'
+import { Icon } from '../wm/Icon'
 import { useContextMenu } from '../wm/ContextMenu'
 
 export function Connections({ onConnected, connected = [], onCancel }: {
   onConnected: (target: string) => void
-  /** Already-connected targets, shown as such so you do not reconnect them. */
   connected?: string[]
-  /** Present when other machines are already connected, so this is cancellable. */
   onCancel?: () => void
 }) {
   const menu = useContextMenu()
   const [saved, setSaved] = useState<SavedConn[]>(() => fw.conns.list())
-  const [form, setForm] = useState<{ host: string; user: string; password: string } | null>(null)
-  const [busy, setBusy] = useState<string | null>(null)
+  const initial = saved.find(c => !connected.includes(`${c.user}@${c.host}`))
+  const [selected, setSelected] = useState(initial ? `${initial.user}@${initial.host}` : '')
+  const [form, setForm] = useState({ host: initial?.host ?? '', user: initial?.user ?? '', password: '' })
+  const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
-  const first = useRef<HTMLInputElement>(null)
+  const connecting = useRef(false)
+  const hostInput = useRef<HTMLInputElement>(null)
+  const machine = saved.find(c => `${c.user}@${c.host}` === selected)
 
-  // Depend on whether the form is open, not on its contents: `form` changes on
-  // every keystroke, which re-ran this and yanked focus back to the first field
-  // after each character.
-  const formOpen = form !== null
-  useEffect(() => {
-    if (formOpen) requestAnimationFrame(() => first.current?.focus())
-  }, [formOpen])
+  const choose = (conn?: SavedConn) => {
+    if (connecting.current) return
+    setSelected(conn ? `${conn.user}@${conn.host}` : '')
+    setForm({ host: conn?.host ?? '', user: conn?.user ?? '', password: '' })
+    setErr('')
+    if (!conn) requestAnimationFrame(() => hostInput.current?.focus())
+  }
 
-  const connect = async (user: string, host: string, password: string) => {
+  const connect = async () => {
+    if (connecting.current) return
+    const user = form.user.trim(), host = form.host.trim()
+    if (!user || !host) return
     const target = `${user}@${host}`
-    setBusy(target); setErr('')
+    connecting.current = true
+    setBusy(true); setErr('')
     try {
-      await fw.host.connect(target, password || undefined)
-      // Ask the machine what it calls itself, so the next visit shows a name
-      // rather than an address. Best effort: a box without hostname1 is still
-      // perfectly usable, it just stays known by its address.
+      await fw.host.connect(target, form.password || undefined)
       const name = await fw.for(target).dbus
         .get('org.freedesktop.hostname1', '/org/freedesktop/hostname1',
-             'org.freedesktop.hostname1', 'Hostname')
-        .then(v => (typeof v === 'string' && v ? v : undefined))
+          'org.freedesktop.hostname1', 'Hostname')
+        .then(v => typeof v === 'string' && v ? v : undefined)
         .catch(() => undefined)
-      fw.conns.remember(user, host, name)   // host, user and name — never the password
+      fw.conns.remember(user, host, name)
       setSaved(fw.conns.list())
       onConnected(target)
     } catch (e) {
       setErr(String(e).replace(/^Error:\s*/, ''))
-    } finally { setBusy(null) }
+    } finally { connecting.current = false; setBusy(false) }
+  }
+
+  const forget = (c: SavedConn) => {
+    fw.conns.forget(c.user, c.host)
+    setSaved(fw.conns.list())
+    if (selected === `${c.user}@${c.host}`) choose()
   }
 
   return (
-    <div className="w-full h-full flex flex-col items-center justify-center gap-6
-                    bg-[radial-gradient(ellipse_at_30%_0%,#1b2430_0%,#0f1116_60%)]">
-      <div className="text-center">
-        <h1 className="text-lg font-semibold tracking-tight">sshdesk</h1>
-        <p className="text-xs text-desk-dim mt-1">
-          {connected.length
-            ? `Connect another machine · ${connected.length} already connected`
-            : 'Pick a machine, or add a new one.'}
-        </p>
-        {onCancel && (
-          <button onClick={onCancel}
-            className="mt-3 px-3 py-1 rounded text-xs border border-desk-line hover:bg-white/10">
-            Back to desktop
-          </button>
-        )}
+    <main className="connection-screen" onKeyDown={e => {
+      if (e.key === 'Escape' && onCancel && !busy) { e.preventDefault(); onCancel() }
+    }}>
+      <div className="connection-titlebar" data-tauri-drag-region>
+        <span>sshdesk</span><span className="connection-titlebar-label">Remote desktop</span>
+        {onCancel && <button className="subtle-button" onClick={onCancel} disabled={busy}>
+          <Icon id="lucide:arrow-left" size={14} /> Back to desktop
+        </button>}
       </div>
-
-      {err && (
-        <div className="max-w-lg px-3 py-2 rounded-lg text-xs bg-desk-bad/15 text-desk-bad
-                        border border-desk-bad/30 select-text break-all">{err}</div>
-      )}
-
-      <div className="flex flex-wrap gap-3 justify-center max-w-3xl px-6">
-        {saved.map(c => {
-          const target = `${c.user}@${c.host}`
-          const already = connected.includes(target)
-          return (
-            <button
-              key={target}
-              disabled={!!busy || already}
-              onClick={() => setForm({ host: c.host, user: c.user, password: '' })}
-              onContextMenu={ev => menu.open(ev, [
-                { label: 'Connect', icon: '→',
-                  onSelect: () => setForm({ host: c.host, user: c.user, password: '' }) },
-                { type: 'separator' },
-                { label: 'Forget this connection', icon: '🗑', danger: true,
-                  onSelect: () => { fw.conns.forget(c.user, c.host); setSaved(fw.conns.list()) } },
-              ])}
-              className="group w-44 p-3 rounded-xl text-left border border-white/10
-                         bg-white/[0.04] hover:bg-white/[0.08] backdrop-blur-xl
-                         transition disabled:opacity-40"
-            >
-              <div className="flex items-start">
-                <div className="w-9 h-9 rounded-lg grid place-items-center text-lg
-                                bg-desk-accent/15 border border-desk-accent/25 mb-2">🖥</div>
-                {/* Visible, not only in a context menu — removing a machine you
-                    no longer have should not be something you discover.
-                    Hidden while connected: the card is disabled then, so the
-                    control would look live and do nothing. */}
-                {!already && <span
-                  role="button"
-                  tabIndex={0}
-                  title={`Forget ${c.name || c.host}`}
-                  onPointerDown={ev => { ev.stopPropagation(); ev.preventDefault() }}
-                  onClick={ev => {
-                    ev.stopPropagation()
-                    fw.conns.forget(c.user, c.host)
-                    setSaved(fw.conns.list())
-                  }}
-                  className="ml-auto -mr-1 -mt-1 w-6 h-6 grid place-items-center rounded
-                             text-desk-dim opacity-0 group-hover:opacity-100
-                             hover:bg-desk-bad/20 hover:text-desk-bad transition"
-                >×</span>}
-              </div>
-              <div className="text-sm font-medium truncate">{c.name || c.host}</div>
-              <div className="text-[11px] text-desk-dim truncate">
-                {c.user}{c.name ? ` · ${c.host}` : ''}
-              </div>
-              <div className="text-[10px] text-desk-dim mt-1">
-                {already ? 'connected'
-                  : busy === target ? 'connecting…'
-                  : new Date(c.lastUsed).toLocaleDateString()}
-              </div>
-            </button>
-          )
-        })}
-
-        <button
-          onClick={() => setForm({ host: '', user: '', password: '' })}
-          className="w-44 p-3 rounded-xl text-left border border-dashed border-white/15
-                     bg-transparent hover:bg-white/[0.05] transition"
-        >
-          <div className="w-9 h-9 rounded-lg grid place-items-center text-lg
-                          border border-white/15 text-desk-dim mb-2">+</div>
-          <div className="text-sm font-medium">New connection</div>
-          <div className="text-[11px] text-desk-dim">host, user, password</div>
-        </button>
-      </div>
-
-      {form && (
-        <div className="fixed inset-0 z-[10002] bg-black/50 flex items-center justify-center"
-             onPointerDown={() => setForm(null)}>
-          <form
-            onPointerDown={e => e.stopPropagation()}
-            onSubmit={e => { e.preventDefault(); void connect(form.user, form.host, form.password) }}
-            onKeyDown={e => { if (e.key === 'Escape') { e.preventDefault(); setForm(null) } }}
-            className="w-[min(400px,86vw)] rounded-xl border border-desk-line bg-desk-panel
-                       shadow-2xl shadow-black/60 p-4 flex flex-col gap-3"
-          >
-            <h2 className="text-sm font-semibold">
-              {saved.some(c => c.host === form.host && c.user === form.user)
-                ? `Connect to ${form.host}` : 'New connection'}
-            </h2>
-
-            <label className="text-[11px] text-desk-dim">
-              Host / IP
-              <input
-                ref={first}
-                value={form.host}
-                onChange={e => setForm({ ...form, host: e.target.value })}
-                placeholder="10.0.0.5"
-                spellCheck={false}
-                className="mt-1 w-full bg-black/40 border border-desk-line rounded px-2 py-1.5
-                           text-sm text-desk-fg outline-none focus:border-desk-accent select-text"
-              />
-            </label>
-
-            <label className="text-[11px] text-desk-dim">
-              Username
-              <input
-                value={form.user}
-                onChange={e => setForm({ ...form, user: e.target.value })}
-                placeholder="root"
-                spellCheck={false}
-                className="mt-1 w-full bg-black/40 border border-desk-line rounded px-2 py-1.5
-                           text-sm text-desk-fg outline-none focus:border-desk-accent select-text"
-              />
-            </label>
-
-            <label className="text-[11px] text-desk-dim">
-              Password
-              <input
-                type="password"
-                value={form.password}
-                onChange={e => setForm({ ...form, password: e.target.value })}
-                placeholder="leave empty to use your SSH key"
-                className="mt-1 w-full bg-black/40 border border-desk-line rounded px-2 py-1.5
-                           text-sm text-desk-fg outline-none focus:border-desk-accent select-text"
-              />
-              <span className="block mt-1 text-[10px] text-desk-dim">
-                Not saved. Only the host and username are remembered.
-              </span>
-            </label>
-
-            <div className="flex justify-end gap-2 mt-1">
-              <button type="button" onClick={() => setForm(null)}
-                className="px-3 py-1.5 rounded text-xs border border-desk-line hover:bg-white/10">
-                Cancel
-              </button>
-              <button type="submit" disabled={!form.host || !form.user || !!busy}
-                className="px-3 py-1.5 rounded text-xs font-medium bg-desk-accent text-[#0b1220]
-                           hover:brightness-110 disabled:opacity-40">
-                {busy ? 'Connecting…' : 'Connect'}
-              </button>
+      <div className="connection-workspace">
+        <header className="connection-heading">
+          <div className="connection-mark"><Icon id="desk:terminal" fallback="⌘" size={24} /></div>
+          <div><h1>Your machines. Your workspace.</h1>
+            <p>Files, terminals, and tools. One desktop, over SSH.</p></div>
+        </header>
+        <section className="connection-panel" aria-label="Connect to a machine">
+          <aside className="machine-sidebar">
+            <div className="machine-sidebar-heading"><span>Machines</span><span>{saved.length}</span></div>
+            <div className="machine-list">
+              {saved.map(c => {
+                const target = `${c.user}@${c.host}`
+                const already = connected.includes(target)
+                return <div key={target} className={`machine-row ${selected === target ? 'is-selected' : ''}`}>
+                  <button className="machine-select" disabled={busy || already}
+                    aria-pressed={selected === target} onClick={() => choose(c)}
+                    onContextMenu={e => menu.open(e, [
+                      { label: 'Connect', disabled: busy || already, onSelect: () => choose(c) },
+                      { type: 'separator' },
+                      { label: 'Forget connection', disabled: busy || already, danger: true, onSelect: () => forget(c) },
+                    ])}>
+                    <span className="machine-icon"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 4.5h16v11H4zM12 15.5v4M8 19.5h8" /></svg></span>
+                    <span className="machine-copy"><strong>{c.name || c.host}</strong>
+                      <span>{c.user}@{c.host}</span>
+                      {already && <small className="text-desk-ok">Connected</small>}
+                    </span>
+                  </button>
+                  {!already && <button className="machine-forget" disabled={busy}
+                    aria-label={`Forget ${c.name || c.host}`} title="Forget connection" onClick={() => forget(c)}>
+                    <Icon id="lucide:x" size={13} />
+                  </button>}
+                </div>
+              })}
+              {!saved.length && <p className="machine-empty">Your saved machines will appear here.</p>}
             </div>
+            <button className={`machine-add ${!selected ? 'is-selected' : ''}`} disabled={busy} onClick={() => choose()}>
+              <Icon id="lucide:plus" size={16} /> Add a machine
+            </button>
+            <div className="machine-sidebar-footer"><Icon id="lucide:laptop" size={14} /> Connected from this Mac</div>
+          </aside>
+          <form className="connection-form" aria-busy={busy}
+            onSubmit={e => { e.preventDefault(); void connect() }}>
+            <div className="connection-form-heading">
+              <span className="connection-eyebrow">{machine ? 'Saved machine' : 'New connection'}</span>
+              <h2>{machine?.name || machine?.host || (saved.length ? 'Connect another machine' : 'Add your first connection')}</h2>
+              <p>{machine ? 'Pick up where you left off.' : 'Connect to any machine you can reach over SSH.'}</p>
+            </div>
+            <fieldset disabled={busy} className="connection-fields">
+              <label>Host or IP address
+                <input ref={hostInput} value={form.host} required autoComplete="off" spellCheck={false}
+                  placeholder="192.168.1.10 or my-server" onChange={e => setForm({ ...form, host: e.target.value })} />
+              </label>
+              <label>Username
+                <input value={form.user} required autoComplete="username" spellCheck={false}
+                  placeholder="Your remote username" onChange={e => setForm({ ...form, user: e.target.value })} />
+              </label>
+              <label><span>Password <span className="field-optional">Optional</span></span>
+                <input type="password" value={form.password} autoComplete="off"
+                  placeholder="Leave empty to use your SSH key" onChange={e => setForm({ ...form, password: e.target.value })} />
+              </label>
+            </fieldset>
+            {err && <div className="connection-error" role="alert"><strong>Couldn’t connect</strong><span>{err}</span></div>}
+            <button type="submit" className="connection-submit" disabled={busy || !form.host.trim() || !form.user.trim()}>
+              {busy ? <><span className="ui-spinner" /> Connecting…</> : <><span>Connect to machine</span><Icon id="lucide:arrow-right" size={16} /></>}
+            </button>
+            <p className="connection-security"><Icon id="lucide:key-round" size={13} /> Passwords are never saved.</p>
           </form>
-        </div>
-      )}
-    </div>
+        </section>
+        <footer className="connection-footer"><span className="status-dot" /> Your SSH connection. Nothing to install on the remote.</footer>
+      </div>
+    </main>
   )
 }

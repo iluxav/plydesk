@@ -16,10 +16,18 @@ export type MenuItem =
       onSelect: () => void
     }
 
+interface MenuAnchor {
+  clientX: number
+  clientY: number
+  type?: string
+  currentTarget?: EventTarget | null
+  preventDefault?: () => void
+}
+
 interface MenuState { x: number; y: number; items: MenuItem[] }
 
 const Ctx = createContext<{
-  open: (e: { clientX: number; clientY: number; preventDefault?: () => void }, items: MenuItem[]) => void
+  open: (e: MenuAnchor, items: MenuItem[]) => void
   close: () => void
 } | null>(null)
 
@@ -32,11 +40,13 @@ export function ContextMenuProvider({ children }: { children: ReactNode }) {
 
   const close = useCallback(() => { setMenu(null); setActive(-1) }, [])
 
-  const open = useCallback((e: { clientX: number; clientY: number; preventDefault?: () => void },
+  const open = useCallback((e: MenuAnchor,
                             items: MenuItem[]) => {
     e.preventDefault?.()
     if (!items.length) return
-    setMenu({ x: e.clientX, y: e.clientY, items })
+    const trigger = e.type === 'click' && e.currentTarget instanceof HTMLElement
+      ? e.currentTarget.getBoundingClientRect() : null
+    setMenu({ x: trigger?.left ?? e.clientX, y: trigger ? trigger.bottom + 5 : e.clientY, items })
     setActive(-1)
   }, [])
 
@@ -53,11 +63,11 @@ export function ContextMenuProvider({ children }: { children: ReactNode }) {
     if (!menu) return
     const onKey = (e: KeyboardEvent) => {
       const items = menu.items
-      if (e.key === 'Escape') { close(); return }
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); return }
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-        e.preventDefault()
+        e.preventDefault(); e.stopPropagation()
         const step = e.key === 'ArrowDown' ? 1 : -1
-        let i = active
+        let i = active < 0 && step < 0 ? 0 : active
         for (let n = 0; n < items.length; n++) {
           i = (i + step + items.length) % items.length
           const it = items[i]
@@ -65,7 +75,9 @@ export function ContextMenuProvider({ children }: { children: ReactNode }) {
         }
         setActive(i)
       }
+      if (e.key === 'Tab') { close(); return }
       if (e.key === 'Enter' && active >= 0) {
+        e.preventDefault(); e.stopPropagation()
         const it = items[active]
         if (isItem(it) && !it.disabled) { close(); it.onSelect() }
       }
@@ -90,9 +102,10 @@ export function ContextMenuProvider({ children }: { children: ReactNode }) {
              onContextMenu={e => { e.preventDefault(); close() }}>
           <div
             ref={ref}
+            role="menu" aria-label="Actions"
             style={{ left: menu.x, top: menu.y }}
             onPointerDown={e => e.stopPropagation()}
-            className="absolute min-w-44 py-1 rounded-lg border border-desk-line
+            className="context-menu absolute min-w-44 py-1 rounded-lg border border-desk-line
                        bg-desk-panel/95 backdrop-blur-xl shadow-2xl shadow-black/60
                        text-desk-fg text-xs select-none"
           >
@@ -102,6 +115,7 @@ export function ContextMenuProvider({ children }: { children: ReactNode }) {
               ) : (
                 <button
                   key={i}
+                  role="menuitem"
                   disabled={m.disabled}
                   onMouseEnter={() => setActive(i)}
                   onClick={() => { close(); m.onSelect() }}

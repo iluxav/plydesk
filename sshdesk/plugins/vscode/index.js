@@ -6,16 +6,9 @@
  * started with `sdk.exec`, the socket is forwarded with `fw.net.forwardSocket`
  * on the live connection, and the result is a window.
  *
- * A window rather than an iframe, and not for looks. WebKit partitions storage
- * by <top-level site, origin>, so an embedded page gets a third-party
- * partition that is not durably kept — VS Code stores its settings in browser
- * storage, so every restart came back to the default light theme. Top-level,
- * it is first-party and keeps what it saves.
- *
- * That also brings the connection token back. It is delivered as a
- * SameSite=Lax cookie, which an embedded frame never gets to keep; a top-level
- * page does. So the server binds a unix socket *and* requires a token — no TCP
- * port on the remote for anyone to reach, and the forwarded port needs a secret.
+ * The editor is a first-party child webview inside its sshdesk desktop
+ * window. It keeps browser storage and authentication cookies without opening
+ * a separate macOS window. The desktop owns its bounds and lifetime.
  *
  * Why a server on the remote rather than VS Code Web bundled in the app: web
  * builds only run *web* extensions. No rust-analyzer, no gopls, no debugger —
@@ -29,6 +22,7 @@ const REL = `https://github.com/gitpod-io/openvscode-server/releases/download/op
 export const manifest = {
   id: 'vscode',
   name: 'VS Code',
+  description: 'Work on remote projects in a full code editor.',
   icon: 'lucide:code-xml',
   window: { w: 1180, h: 780 },
 
@@ -142,14 +136,17 @@ export function createAdapter(sdk) {
   }
 }
 
-export function createApp({ React, html, api, fw }) {
+export function createApp({ React, html, useApi, useFw, EmbeddedWebview }) {
   const { useState, useEffect, useCallback, useRef } = React
 
   return function VSCode({ setTitle, host }) {
+    const api = useApi()
+    const fw = useFw()
     const [err, setErr] = useState('')
     const [log, setLog] = useState('')
-    const [status, setStatus] = useState('starting the server…')
-    const [open, setOpen] = useState(false)
+    const [status, setStatus] = useState('Starting VS Code…')
+    const [url, setUrl] = useState('')
+    const [ready, setReady] = useState(false)
     const socket = useRef('')
 
     useEffect(() => { setTitle && setTitle('VS Code') }, [setTitle])
@@ -157,60 +154,63 @@ export function createApp({ React, html, api, fw }) {
     const machine = (host || fw.host.current() || '').replace(/^.*@/, '')
 
     const launch = useCallback(async () => {
-      setErr(''); setLog(''); setOpen(false)
-      setStatus('starting the server…')
+      setErr(''); setLog(''); setUrl(''); setReady(false)
+      setStatus('Starting VS Code…')
       try {
         const { socket: path, token } = await api.start()
         socket.current = path
-        setStatus('forwarding the socket…')
+        setStatus('Connecting your workspace…')
         // Added to the connection already open — no reconnect, no second
         // authentication. The port is derived from the forward, so the window
         // returns to the same web origin and keeps what it saved last time.
         const local = await fw.net.forwardSocket(path)
         const url = `http://127.0.0.1:${local}/${token ? `?tkn=${token}` : ''}`
-        await fw.openWindow(`vscode-${host || 'default'}`, url, `VS Code — ${machine}`)
-        setOpen(true)
-        setStatus('')
+        setUrl(url)
+        setStatus('Opening the editor…')
       } catch (e) {
         setErr(String(e))
         setStatus('')
         try { setLog(await api.log()) } catch { /* best effort */ }
       }
-    }, [host, machine])
+    }, [api, fw, host, machine])
 
     useEffect(() => { launch() }, [launch])
 
     const stop = async () => {
+      if (!await fw.ui.confirm({ title: 'Stop VS Code?', message: `This ends the editor server on ${machine}. Save your work in VS Code first.`, okLabel: 'Stop server' })) return
       try { await api.stop() } catch { /* may already be gone */ }
       if (socket.current) {
         try { await fw.net.unforwardSocket(socket.current) } catch { /* ditto */ }
       }
-      setOpen(false)
+      setUrl('')
+      setReady(false)
       setStatus('server stopped')
     }
 
+    const stopped = status === 'server stopped'
+    const loaded = () => { setReady(true); setStatus('') }
+    const failed = message => { setErr(message); setUrl(''); setStatus('') }
     return html`
-      <div class="vsc-boot">
-        ${status && html`<p class="vsc-status">${status}</p>`}
-        ${open && html`
-          <div class="vsc-panel">
-            <p class="vsc-title">VS Code is open in its own window</p>
-            <p class="vsc-note">
-              Its own window, not a panel here, so WebKit treats it as
-              first-party — which is the only way its settings, theme and
-              extensions survive a restart.
-            </p>
-            <div class="vsc-row">
-              <button class="vsc-btn" onClick=${launch}>Bring to front</button>
-              <button class="vsc-btn" onClick=${stop}>Stop server</button>
-            </div>
-          </div>`}
-        ${err && html`
-          <div class="vsc-err">
-            <p>${err}</p>
-            ${log && html`<pre class="vsc-log">${log}</pre>`}
-            <button class="vsc-btn" onClick=${launch}>try again</button>
-          </div>`}
+      <div class="desk-app vsc-root">
+        ${url ? html`
+          <${EmbeddedWebview} url=${url} title="VS Code" onReady=${loaded} onError=${failed} />
+        ` : html`
+          <div class="vsc-workspace">
+            <span class="vsc-app-mark app-tile app-tile-vscode" aria-hidden="true">${'</>'}</span>
+            <h1>${err ? 'Couldn’t open VS Code' : stopped ? 'VS Code is stopped' : 'Opening VS Code'}</h1>
+            <p class="vsc-machine">${machine}</p>
+            ${status && !stopped && html`<div class="vsc-progress" role="status"><span class="ui-spinner"></span>${status}</div>`}
+            ${stopped && html`<div class="vsc-panel"><p class="vsc-note">Start it again when you’re ready to continue working.</p><button class="app-button is-primary" onClick=${launch}>Open VS Code</button></div>`}
+            ${err && html`<div class="vsc-err" role="alert"><p>${err}</p>
+              ${log && html`<details class="vsc-details"><summary>Connection details</summary><pre class="vsc-log">${log}</pre></details>`}
+              <button class="app-button" onClick=${launch}>Try again</button></div>`}
+          </div>
+        `}
+        <footer class="app-statusbar">
+          <span>${ready ? 'Connected' : err ? 'Connection failed' : stopped ? 'Stopped' : status}</span>
+          <span class="app-status-optional">${machine}</span>
+          ${url && html`<button class="app-button vsc-stop" onClick=${stop}>Stop server…</button>`}
+        </footer>
       </div>`
   }
 }

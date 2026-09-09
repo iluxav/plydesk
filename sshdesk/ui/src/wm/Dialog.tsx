@@ -2,6 +2,8 @@ import {
   createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode,
 } from 'react'
 
+import { useModalFocus } from './useModalFocus'
+
 /**
  * In-app dialogs.
  *
@@ -27,6 +29,8 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   const [spec, setSpec] = useState<Spec | null>(null)
   const [text, setText] = useState('')
   const input = useRef<HTMLInputElement>(null)
+  const modal = useRef<HTMLDivElement>(null)
+  useModalFocus(modal, !!spec)
 
   useEffect(() => {
     if (spec?.kind === 'prompt') {
@@ -49,7 +53,8 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   // `never` if we try to call it generically.
   const finish = (accepted: boolean) => {
     if (!spec) return
-    if (spec.kind === 'prompt') spec.resolve(accepted ? (text.trim() || null) : null)
+    if (accepted && spec.kind === 'prompt' && !(spec.password ? text : text.trim())) return
+    if (spec.kind === 'prompt') spec.resolve(accepted ? ((spec.password ? text : text.trim()) || null) : null)
     else if (spec.kind === 'confirm') spec.resolve(accepted)
     else spec.resolve()
     setSpec(null)
@@ -64,15 +69,16 @@ export function DialogProvider({ children }: { children: ReactNode }) {
         <div className="fixed inset-0 z-[10002] bg-black/50 flex items-center justify-center"
              onPointerDown={cancel}>
           <div
+            ref={modal} role="dialog" aria-modal="true" aria-labelledby="desk-dialog-title" tabIndex={-1}
             onPointerDown={e => e.stopPropagation()}
             onKeyDown={e => {
-              if (e.key === 'Enter') { e.preventDefault(); accept() }
-              if (e.key === 'Escape') { e.preventDefault(); cancel() }
+              if (e.key === 'Enter' && e.target === input.current) { e.preventDefault(); accept() }
+              if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cancel() }
             }}
-            className="w-[min(420px,86vw)] rounded-xl border border-desk-line bg-desk-panel
+            className="desk-modal w-[min(420px,86vw)] rounded-xl border border-desk-line bg-desk-panel
                        shadow-2xl shadow-black/60 p-4 text-desk-fg"
           >
-            <h2 className="text-sm font-semibold mb-1">{spec.title}</h2>
+            <h2 id="desk-dialog-title" className="text-sm font-semibold mb-1">{spec.title}</h2>
 
             {spec.kind === 'prompt' && (
               <>
@@ -101,6 +107,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
               )}
               <button
                 autoFocus={spec.kind !== 'prompt'}
+                disabled={spec.kind === 'prompt' && !(spec.password ? text : text.trim())}
                 onClick={accept}
                 className={`px-3 py-1.5 rounded text-xs font-medium
                   ${spec.kind === 'confirm' && spec.danger

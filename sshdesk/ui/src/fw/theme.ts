@@ -9,7 +9,7 @@
  * `[data-host="…"]`, which every window and every pane carries — so they reach
  * that machine's things and nothing else.
  */
-import { declarations, resolve, machineConfig, configKey, type TokenType } from './tokens'
+import { declarations, resolve, type TokenType } from './tokens'
 
 const STYLE_ID = 'sshdesk-theme'
 
@@ -61,13 +61,13 @@ export function buildCss(hosts: string[] = [], active = ''): string {
     css += `.app-${appId} {\n  ${decls.join('\n  ')}\n}\n`
   }
 
-  // Only the keys a machine actually overrides, so a host block stays small
-  // and it is obvious in devtools what that machine changed.
+  // Resolve each machine's entire palette. Emitting only overrides lets an
+  // uncustomized machine inherit the focused machine's colors from :root.
+  // References must be resolved too: @desk.accent is a config value, not CSS.
   for (const host of hosts) {
-    const over = machineConfig(host)
     const lines: string[] = []
-    for (const [appId, name, type] of themeTokens()) {
-      const v = over[configKey(`${appId}.${name}`, type)]
+    for (const [appId, name] of themeTokens()) {
+      const v = resolve(`${appId}.${name}`, host).value
       if (v) lines.push(`${cssVar(appId, name)}: ${v};`)
     }
     if (lines.length) css += `[data-host="${cssEscape(host)}"] {\n  ${lines.join('\n  ')}\n}\n`

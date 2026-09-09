@@ -6,11 +6,15 @@ import type { Requirement } from '../fw'
 import { makeSdk, type Sdk } from './sdk'
 import { useFw, useHost } from '../wm/host'
 import { APPS, type AppDef } from '../desktop/registry'
+import { EmbeddedWebview } from '../wm/EmbeddedWebview'
 
 interface PluginModule {
   manifest?: {
     id: string
     name: string
+    description?: string
+    version?: string
+    author?: string
     icon?: string
     window?: { w?: number; h?: number }
     /** Tokens this plugin owns; Settings renders an editor for each. */
@@ -34,6 +38,8 @@ interface PluginModule {
     api: Record<string, unknown>
     /** Hook returning the adapter pinned to *this window's* host. Prefer it. */
     useApi: () => Record<string, unknown>
+    /** First-party web content attached inside this desktop window. */
+    EmbeddedWebview: typeof EmbeddedWebview
   }) => React.ComponentType<any>
 }
 
@@ -52,6 +58,11 @@ interface RawPlugin { name: string; dir: string; source: string; style?: string 
  */
 /** Ids currently provided by plugins, so a reload can retire ones that vanished. */
 let installed: string[] = []
+
+export interface PluginFailure { name: string; directory: string; message: string }
+let failures: PluginFailure[] = []
+/** Module load failures are visible in Settings as well as the developer console. */
+export function pluginFailures(): PluginFailure[] { return failures }
 
 /** Subscribers re-render when the plugin set changes. */
 const watchers = new Set<() => void>()
@@ -76,6 +87,7 @@ export async function loadPlugins(): Promise<string[]> {
   document.querySelectorAll('style[data-plugin]').forEach(el => el.remove())
 
   const loaded: string[] = []
+  const nextFailures: PluginFailure[] = []
   for (const p of raw) {
     try {
       const url = URL.createObjectURL(new Blob([p.source], { type: 'text/javascript' }))
@@ -125,7 +137,7 @@ export async function loadPlugins(): Promise<string[]> {
       if (!mod.createApp) throw new Error('missing createApp')
 
       const html = htm.bind(React.createElement)
-      const Component = mod.createApp({ React, h: React.createElement, html, fw, useFw, api, useApi })
+      const Component = mod.createApp({ React, h: React.createElement, html, fw, useFw, api, useApi, EmbeddedWebview })
 
       const def: AppDef = {
         id: m.id,
@@ -136,6 +148,12 @@ export async function loadPlugins(): Promise<string[]> {
         h: m.window?.h ?? 540,
         opens: m.opens,
         requires: m.requires,
+        description: typeof m.description === 'string' ? m.description : undefined,
+        plugin: {
+          directory: p.dir,
+          version: typeof m.version === 'string' ? m.version : undefined,
+          author: typeof m.author === 'string' ? m.author : undefined,
+        },
       }
       const at = APPS.findIndex(a => a.id === def.id)
       if (at >= 0) APPS[at] = def
@@ -144,6 +162,7 @@ export async function loadPlugins(): Promise<string[]> {
       loaded.push(m.id)
     } catch (e) {
       // One bad plugin must not stop the desktop from booting.
+      nextFailures.push({ name: p.name, directory: p.dir, message: String(e) })
       console.error(`sshdesk: plugin "${p.name}" failed to load:`, e)
     }
   }
@@ -154,6 +173,7 @@ export async function loadPlugins(): Promise<string[]> {
     if (at >= 0) APPS.splice(at, 1)
   }
   installed = loaded
+  failures = nextFailures
   watchers.forEach(fn => { try { fn() } catch { /* isolate */ } })
   return loaded
 }

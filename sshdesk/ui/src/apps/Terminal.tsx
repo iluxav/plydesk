@@ -1,9 +1,10 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Terminal as Xterm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
 import { useFw } from '../wm/host'
+import { onTokensChanged, resolve } from '../fw/tokens'
 
 let seq = 0
 
@@ -21,6 +22,8 @@ export function Terminal({ setTitle }: { setTitle?: (t: string) => void }) {
   const fw = useFw()
   const host = useRef<HTMLDivElement>(null)
   const idRef = useRef(`term-${++seq}`)
+  const [status, setStatus] = useState('Opening session…')
+  const [dimensions, setDimensions] = useState('')
 
   useEffect(() => {
     if (!host.current) return
@@ -28,7 +31,8 @@ export function Terminal({ setTitle }: { setTitle?: (t: string) => void }) {
     const target = fw.host.current()
 
     const term = new Xterm({
-      fontSize: 12,
+      fontSize: 13,
+      lineHeight: 1.3,
       fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
       cursorBlink: true,
       allowProposedApi: true,
@@ -47,6 +51,16 @@ export function Terminal({ setTitle }: { setTitle?: (t: string) => void }) {
     term.loadAddon(new WebLinksAddon())
     term.open(host.current)
     fit.fit()
+    const updateTheme = () => {
+      term.options.theme = { ...term.options.theme,
+        background: resolve('desk.panel', target).value,
+        foreground: resolve('desk.fg', target).value,
+        cursor: resolve('desk.accent', target).value,
+        selectionBackground: resolve('desk.selection', target).value,
+      }
+    }
+    updateTheme()
+    const offTheme = onTokensChanged(updateTheme)
 
     setTitle?.(`Terminal — ${target}`)
 
@@ -67,7 +81,7 @@ export function Terminal({ setTitle }: { setTitle?: (t: string) => void }) {
           if (e.payload.id === id) term.write(decode(e.payload.b64))
         })
         const un2 = await listen('term:exit', (e: any) => {
-          if (e.payload.id === id) term.write('\r\n\x1b[2m[session closed]\x1b[0m\r\n')
+          if (e.payload.id === id) { term.write('\r\n\x1b[2m[session closed]\x1b[0m\r\n'); setStatus('Session closed') }
         })
         unlistens.push(un1, un2)
         if (disposed) { un1(); un2(); return }
@@ -76,18 +90,22 @@ export function Terminal({ setTitle }: { setTitle?: (t: string) => void }) {
         const cols = term.cols > 0 ? term.cols : 80
         const rows = term.rows > 0 ? term.rows : 24
         await fw.term.open(id, target, cols, rows)
+        if (!disposed) { setStatus('SSH session'); setDimensions(`${cols} × ${rows}`) }
 
         term.onData(d => { void fw.term.write(id, d) })
         term.focus()
       } catch (err) {
+        if (!disposed) setStatus('Connection error')
         term.write(`\r\n\x1b[31m${String(err)}\x1b[0m\r\n`)
       }
     })()
 
     // xterm needs an explicit fit; the window has no resize event of its own.
     const ro = new ResizeObserver(() => {
+      if (!host.current?.clientWidth || !host.current?.clientHeight) return
       try {
         fit.fit()
+        setDimensions(`${term.cols} × ${term.rows}`)
         void fw.term.resize(id, term.cols, term.rows)
       } catch { /* element detached */ }
     })
@@ -96,11 +114,14 @@ export function Terminal({ setTitle }: { setTitle?: (t: string) => void }) {
     return () => {
       disposed = true
       ro.disconnect()
+      offTheme()
       unlistens.forEach(u => u())
       void fw.term.close(id)
       term.dispose()
     }
-  }, [setTitle])
+  }, [fw, setTitle])
 
-  return <div ref={host} className="w-full h-full bg-desk-panel p-1 overflow-hidden" />
+  return <div className="desk-app"><div ref={host} className="terminal-surface" />
+    <footer className="app-statusbar"><span>{status}</span><span className="app-status-optional">{fw.host.current()}</span><span className="app-status-end">{dimensions}</span></footer>
+  </div>
 }

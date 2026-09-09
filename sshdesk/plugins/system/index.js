@@ -130,14 +130,16 @@ function createAdapter(sdk) {
 var manifest = {
   id: "system",
   name: "System",
+  description: "Review memory, storage, and machine health.",
   icon: "desk:cpu",
   window: { w: 1e3, h: 640 }
 };
 var gb = (b) => b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : b >= 1e6 ? `${(b / 1e6).toFixed(0)} MB` : `${(b / 1e3).toFixed(0)} KB`;
 function createApp({ React, useFw, useApi }) {
-  const { useState, useEffect, useCallback } = React;
+  const { useState, useEffect, useCallback, useRef, useId } = React;
   function Card({ tone = "ok", label, value, hint, onClick }) {
-    return /* @__PURE__ */ React.createElement("button", { className: `sys-card sys-${tone}`, onClick, disabled: !onClick }, /* @__PURE__ */ React.createElement("div", { className: "sys-card-value" }, value), /* @__PURE__ */ React.createElement("div", { className: "sys-card-label" }, label), hint && /* @__PURE__ */ React.createElement("div", { className: "sys-card-hint" }, hint));
+    const Tag = onClick ? "button" : "div";
+    return /* @__PURE__ */ React.createElement(Tag, { className: `sys-card sys-${tone}`, onClick }, /* @__PURE__ */ React.createElement("div", { className: "sys-card-value" }, value), /* @__PURE__ */ React.createElement("div", { className: "sys-card-label" }, label), hint && /* @__PURE__ */ React.createElement("div", { className: "sys-card-hint" }, hint));
   }
   function Bar({ pct, tone }) {
     return /* @__PURE__ */ React.createElement("div", { className: "sys-bar" }, /* @__PURE__ */ React.createElement("div", { className: `sys-bar-fill sys-${tone}-fill`, style: { width: `${Math.min(100, pct)}%` } }));
@@ -151,6 +153,16 @@ function createApp({ React, useFw, useApi }) {
     const [busy, setBusy] = useState(false);
     const [log, setLog] = useState(null);
     const [big, setBig] = useState(null);
+    const logSheet = useRef(null);
+    const logTitle = useId();
+    useEffect(() => {
+      if (log === null) return;
+      const previous = document.activeElement;
+      logSheet.current?.focus();
+      return () => {
+        if (previous?.isConnected) previous.focus();
+      };
+    }, [log]);
     const load = useCallback(async () => {
       setBusy(true);
       setErr("");
@@ -195,26 +207,26 @@ function createApp({ React, useFw, useApi }) {
       if (ok) act(() => api.prune(what));
     };
     if (!d) {
-      return /* @__PURE__ */ React.createElement("div", { className: "sys-root" }, /* @__PURE__ */ React.createElement("div", { className: "sys-empty" }, err || "reading system\u2026"));
+      return /* @__PURE__ */ React.createElement("div", { className: "desk-app sys-root" }, /* @__PURE__ */ React.createElement("div", { className: "app-empty-state", role: "status" }, /* @__PURE__ */ React.createElement("h2", null, err ? "Unable to read this machine" : "Reading system\u2026"), /* @__PURE__ */ React.createElement("p", null, err || "Checking memory, storage, and services."), err && /* @__PURE__ */ React.createElement("button", { className: "app-button", onClick: load }, "Try again")));
     }
     const fullest = d.filesystems.reduce((a, b) => b.pct > (a?.pct ?? -1) ? b : a, null);
     const reclaimable = d.docker.reduce((s, x) => s + x.free, 0);
     const swapping = d.memory.swapUsed > 0;
     const vram = d.gpus.reduce((s, g) => s + g.usedMb, 0);
-    return /* @__PURE__ */ React.createElement("div", { className: "sys-root" }, /* @__PURE__ */ React.createElement("div", { className: "sys-bar-top" }, /* @__PURE__ */ React.createElement("button", { className: "sys-btn", onClick: load, disabled: busy }, "\u27F3 refresh"), /* @__PURE__ */ React.createElement("span", { className: "sys-dim" }, d.uptime), d.load && /* @__PURE__ */ React.createElement("span", { className: "sys-dim" }, "load ", d.load), /* @__PURE__ */ React.createElement("span", { className: "sys-spacer" }), note && /* @__PURE__ */ React.createElement("span", { className: "sys-note" }, note)), err && /* @__PURE__ */ React.createElement("div", { className: "sys-err" }, err), /* @__PURE__ */ React.createElement("div", { className: "sys-scroll" }, /* @__PURE__ */ React.createElement("div", { className: "sys-cards" }, /* @__PURE__ */ React.createElement(
+    return /* @__PURE__ */ React.createElement("div", { className: "desk-app sys-root" }, /* @__PURE__ */ React.createElement("div", { className: "app-toolbar" }, /* @__PURE__ */ React.createElement("button", { className: "app-button", onClick: load, disabled: busy }, "Refresh"), /* @__PURE__ */ React.createElement("span", { className: "sys-dim" }, d.uptime), d.load && /* @__PURE__ */ React.createElement("span", { className: "sys-dim" }, "load ", d.load), /* @__PURE__ */ React.createElement("span", { className: "sys-spacer" }), note && /* @__PURE__ */ React.createElement("span", { className: "sys-note" }, note)), err && /* @__PURE__ */ React.createElement("div", { className: "app-notice is-error", role: "alert" }, err), /* @__PURE__ */ React.createElement("div", { className: "sys-scroll" }, /* @__PURE__ */ React.createElement("div", { className: "sys-heading" }, /* @__PURE__ */ React.createElement("h1", null, "System overview"), /* @__PURE__ */ React.createElement("p", null, "Memory, storage, and services on this machine.")), /* @__PURE__ */ React.createElement("div", { className: "sys-cards" }, /* @__PURE__ */ React.createElement(
       Card,
       {
         tone: d.failed.length ? "bad" : "ok",
         value: d.failed.length,
-        label: "failed units",
-        hint: d.failed.length ? "needs attention" : "all healthy"
+        label: "Failed services",
+        hint: d.failed.length ? "Needs attention" : "All healthy"
       }
     ), /* @__PURE__ */ React.createElement(
       Card,
       {
         tone: fullest && fullest.pct >= 90 ? "bad" : fullest && fullest.pct >= 80 ? "warn" : "ok",
         value: fullest ? `${fullest.pct}%` : "\u2014",
-        label: fullest ? `${fullest.mount} full` : "disk",
+        label: fullest ? `Disk used \xB7 ${fullest.mount}` : "Disk usage",
         hint: fullest ? `${gb(fullest.avail)} free` : ""
       }
     ), /* @__PURE__ */ React.createElement(
@@ -222,8 +234,8 @@ function createApp({ React, useFw, useApi }) {
       {
         tone: reclaimable > 5e9 ? "warn" : "ok",
         value: gb(reclaimable),
-        label: "docker reclaimable",
-        hint: reclaimable ? "click to prune" : "nothing to reclaim",
+        label: "Docker reclaimable",
+        hint: reclaimable ? "Review cleanup" : "Nothing to reclaim",
         onClick: reclaimable ? () => prune("all") : void 0
       }
     ), /* @__PURE__ */ React.createElement(
@@ -231,8 +243,8 @@ function createApp({ React, useFw, useApi }) {
       {
         tone: swapping ? "warn" : "ok",
         value: gb(d.memory.available),
-        label: "memory available",
-        hint: swapping ? `swapping ${gb(d.memory.swapUsed)}` : "not swapping"
+        label: "Memory available",
+        hint: swapping ? `${gb(d.memory.swapUsed)} swap in use` : "No swap in use"
       }
     ), d.gpus.length > 0 && /* @__PURE__ */ React.createElement(
       Card,
@@ -242,40 +254,58 @@ function createApp({ React, useFw, useApi }) {
         label: `VRAM in use \xB7 ${d.gpus.length} GPU${d.gpus.length > 1 ? "s" : ""}`,
         hint: d.gpus.map((g) => `${g.temp}\xB0C`).join(" \xB7 ")
       }
-    )), d.failed.length > 0 && /* @__PURE__ */ React.createElement("section", { className: "sys-section" }, /* @__PURE__ */ React.createElement("h3", null, "Failed units"), d.failed.map((u) => /* @__PURE__ */ React.createElement("div", { key: u.unit, className: "sys-row" }, /* @__PURE__ */ React.createElement("span", { className: "sys-dot sys-bad-dot" }), /* @__PURE__ */ React.createElement("span", { className: "mono" }, u.unit), /* @__PURE__ */ React.createElement("span", { className: "sys-dim sys-grow" }, u.description), /* @__PURE__ */ React.createElement(
+    )), /* @__PURE__ */ React.createElement("div", { className: "sys-sections" }, d.failed.length > 0 && /* @__PURE__ */ React.createElement("section", { className: "sys-section" }, /* @__PURE__ */ React.createElement("h3", null, "Services needing attention"), d.failed.map((u) => /* @__PURE__ */ React.createElement("div", { key: u.unit, className: "sys-row" }, /* @__PURE__ */ React.createElement("span", { className: "sys-dot sys-bad-dot" }), /* @__PURE__ */ React.createElement("span", { className: "mono" }, u.unit), /* @__PURE__ */ React.createElement("span", { className: "sys-dim sys-grow" }, u.description), /* @__PURE__ */ React.createElement(
       "button",
       {
-        className: "sys-btn",
+        className: "app-button",
         disabled: busy,
         onClick: () => api.unitLog(u.unit).then(setLog).catch((e) => setErr(String(e)))
       },
-      "log"
+      "View log"
     ), /* @__PURE__ */ React.createElement(
       "button",
       {
-        className: "sys-btn",
+        className: "app-button",
         disabled: busy,
         onClick: () => act(() => api.restartUnit(u.unit), `restarted ${u.unit}`)
       },
-      "restart"
+      "Restart"
     )))), /* @__PURE__ */ React.createElement("section", { className: "sys-section" }, /* @__PURE__ */ React.createElement("h3", null, "Filesystems"), d.filesystems.map((fs) => /* @__PURE__ */ React.createElement("div", { key: fs.mount, className: "sys-fs" }, /* @__PURE__ */ React.createElement("div", { className: "sys-fs-head" }, /* @__PURE__ */ React.createElement("span", { className: "mono" }, fs.mount), /* @__PURE__ */ React.createElement("span", { className: "sys-dim" }, gb(fs.avail), " free of ", gb(fs.size)), /* @__PURE__ */ React.createElement("span", { className: fs.pct >= 90 ? "sys-bad-text" : fs.pct >= 80 ? "sys-warn-text" : "sys-dim" }, fs.pct, "%")), /* @__PURE__ */ React.createElement(Bar, { pct: fs.pct, tone: fs.pct >= 90 ? "bad" : fs.pct >= 80 ? "warn" : "ok" }))), /* @__PURE__ */ React.createElement("div", { className: "sys-actions" }, /* @__PURE__ */ React.createElement(
       "button",
       {
-        className: "sys-btn",
+        className: "app-button",
         disabled: busy,
         onClick: () => act(async () => {
           setBig(await api.bigDirs("/"));
           return "scanned /";
         })
       },
-      "what is using / ?"
-    )), big && /* @__PURE__ */ React.createElement("div", { className: "sys-dirs" }, big.map((x) => /* @__PURE__ */ React.createElement("div", { key: x.path, className: "sys-row" }, /* @__PURE__ */ React.createElement("span", { className: "mono sys-size" }, x.size), /* @__PURE__ */ React.createElement("span", { className: "mono sys-dim" }, x.path))))), d.docker.length > 0 && /* @__PURE__ */ React.createElement("section", { className: "sys-section" }, /* @__PURE__ */ React.createElement("h3", null, "Docker"), d.docker.map((x) => /* @__PURE__ */ React.createElement("div", { key: x.type, className: "sys-row" }, /* @__PURE__ */ React.createElement("span", { className: "sys-grow" }, x.type), /* @__PURE__ */ React.createElement("span", { className: "sys-dim mono" }, x.size), /* @__PURE__ */ React.createElement("span", { className: x.free > 1e9 ? "sys-warn-text mono" : "sys-dim mono" }, x.reclaimable, " reclaimable"))), /* @__PURE__ */ React.createElement("div", { className: "sys-actions" }, /* @__PURE__ */ React.createElement("button", { className: "sys-btn", disabled: busy, onClick: () => prune("build") }, "prune build cache"), /* @__PURE__ */ React.createElement("button", { className: "sys-btn", disabled: busy, onClick: () => prune("images") }, "prune images"), /* @__PURE__ */ React.createElement("button", { className: "sys-btn sys-danger", disabled: busy, onClick: () => prune("all") }, "prune all"))), d.gpus.length > 0 && /* @__PURE__ */ React.createElement("section", { className: "sys-section" }, /* @__PURE__ */ React.createElement("h3", null, "GPU"), d.gpus.map((g) => /* @__PURE__ */ React.createElement("div", { key: g.index, className: "sys-fs" }, /* @__PURE__ */ React.createElement("div", { className: "sys-fs-head" }, /* @__PURE__ */ React.createElement("span", { className: "mono" }, g.name), /* @__PURE__ */ React.createElement("span", { className: "sys-dim" }, (g.usedMb / 1024).toFixed(1), " / ", (g.totalMb / 1024).toFixed(0), " GB"), /* @__PURE__ */ React.createElement("span", { className: "sys-dim" }, g.util, "% \xB7 ", g.temp, "\xB0C")), /* @__PURE__ */ React.createElement(
+      "Inspect disk usage"
+    )), big && /* @__PURE__ */ React.createElement("div", { className: "sys-dirs" }, big.map((x) => /* @__PURE__ */ React.createElement("div", { key: x.path, className: "sys-row" }, /* @__PURE__ */ React.createElement("span", { className: "mono sys-size" }, x.size), /* @__PURE__ */ React.createElement("span", { className: "mono sys-dim" }, x.path))))), d.docker.length > 0 && /* @__PURE__ */ React.createElement("section", { className: "sys-section" }, /* @__PURE__ */ React.createElement("h3", null, "Docker"), d.docker.map((x) => /* @__PURE__ */ React.createElement("div", { key: x.type, className: "sys-row" }, /* @__PURE__ */ React.createElement("span", { className: "sys-grow" }, x.type), /* @__PURE__ */ React.createElement("span", { className: "sys-dim mono" }, x.size), /* @__PURE__ */ React.createElement("span", { className: x.free > 1e9 ? "sys-warn-text mono" : "sys-dim mono" }, x.reclaimable, " reclaimable"))), /* @__PURE__ */ React.createElement("div", { className: "sys-actions" }, /* @__PURE__ */ React.createElement("button", { className: "app-button", disabled: busy, onClick: () => prune("build") }, "Clean build cache\u2026"), /* @__PURE__ */ React.createElement("button", { className: "app-button", disabled: busy, onClick: () => prune("images") }, "Clean images\u2026"), /* @__PURE__ */ React.createElement("button", { className: "app-button is-danger", disabled: busy, onClick: () => prune("all") }, "Clean unused data\u2026"))), d.gpus.length > 0 && /* @__PURE__ */ React.createElement("section", { className: "sys-section" }, /* @__PURE__ */ React.createElement("h3", null, "GPU"), d.gpus.map((g) => /* @__PURE__ */ React.createElement("div", { key: g.index, className: "sys-fs" }, /* @__PURE__ */ React.createElement("div", { className: "sys-fs-head" }, /* @__PURE__ */ React.createElement("span", { className: "mono" }, g.name), /* @__PURE__ */ React.createElement("span", { className: "sys-dim" }, (g.usedMb / 1024).toFixed(1), " / ", (g.totalMb / 1024).toFixed(0), " GB"), /* @__PURE__ */ React.createElement("span", { className: "sys-dim" }, g.util, "% \xB7 ", g.temp, "\xB0C")), /* @__PURE__ */ React.createElement(
       Bar,
       {
         pct: g.totalMb ? g.usedMb / g.totalMb * 100 : 0,
         tone: g.usedMb / g.totalMb > 0.9 ? "bad" : "ok"
       }
-    ))), d.gpuProcs.length > 0 && /* @__PURE__ */ React.createElement("div", { className: "sys-dirs" }, d.gpuProcs.map((p) => /* @__PURE__ */ React.createElement("div", { key: p.pid, className: "sys-row" }, /* @__PURE__ */ React.createElement("span", { className: "mono sys-size" }, (p.usedMb / 1024).toFixed(1), " GB"), /* @__PURE__ */ React.createElement("span", { className: "mono" }, p.name), /* @__PURE__ */ React.createElement("span", { className: "sys-dim mono" }, "pid ", p.pid)))))), log !== null && /* @__PURE__ */ React.createElement("div", { className: "sys-modal", onClick: () => setLog(null) }, /* @__PURE__ */ React.createElement("pre", { className: "sys-log", onClick: (e) => e.stopPropagation() }, log)));
+    ))), d.gpuProcs.length > 0 && /* @__PURE__ */ React.createElement("div", { className: "sys-dirs" }, d.gpuProcs.map((p) => /* @__PURE__ */ React.createElement("div", { key: p.pid, className: "sys-row" }, /* @__PURE__ */ React.createElement("span", { className: "mono sys-size" }, (p.usedMb / 1024).toFixed(1), " GB"), /* @__PURE__ */ React.createElement("span", { className: "mono" }, p.name), /* @__PURE__ */ React.createElement("span", { className: "sys-dim mono" }, "pid ", p.pid))))))), /* @__PURE__ */ React.createElement("footer", { className: "app-statusbar" }, /* @__PURE__ */ React.createElement("span", null, busy ? "Refreshing\u2026" : "Refreshes every 15 seconds"), /* @__PURE__ */ React.createElement("span", { className: "app-status-end" }, fw.host.current().split("@").pop())), log !== null && /* @__PURE__ */ React.createElement("div", { className: "sys-modal", onClick: () => setLog(null) }, /* @__PURE__ */ React.createElement(
+      "div",
+      {
+        className: "sys-log-sheet",
+        ref: logSheet,
+        role: "dialog",
+        "aria-labelledby": logTitle,
+        tabIndex: -1,
+        onKeyDown: (e) => {
+          if (e.key === "Escape") {
+            e.stopPropagation();
+            setLog(null);
+          }
+        },
+        onClick: (e) => e.stopPropagation()
+      },
+      /* @__PURE__ */ React.createElement("header", null, /* @__PURE__ */ React.createElement("strong", { id: logTitle }, "Service log"), /* @__PURE__ */ React.createElement("button", { className: "app-button", onClick: () => setLog(null) }, "Close")),
+      /* @__PURE__ */ React.createElement("pre", { className: "sys-log", tabIndex: 0 }, log || "No log entries available.")
+    )));
   };
 }
 export {

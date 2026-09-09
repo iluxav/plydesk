@@ -14,6 +14,7 @@
 export const manifest = {
   id: 'ports',
   name: 'Ports',
+  description: 'Inspect listening ports and open SSH tunnels.',
   icon: 'lucide:ethernet-port',
   window: { w: 940, h: 520 },
 }
@@ -192,48 +193,47 @@ export function createApp({ React, useFw, useApi }) {
     }, `killed ${r.process} (${r.pid})`)
 
     return (
-      <div className="ports-root">
-        <div className="ports-bar">
-          <input
-            className="ports-input"
+      <div className="desk-app ports-root">
+        <div className="app-toolbar" role="toolbar" aria-label="Port filters">
+          <label className="app-search"><input
+            aria-label="Filter ports"
             value={filter}
             spellCheck={false}
-            placeholder="filter port, process or bind"
+            placeholder="Filter port, process, or address"
             onChange={e => setFilter(e.target.value)}
-          />
-          <label className="ports-check">
+          /></label>
+          <label className="app-check">
             <input
               type="checkbox"
               checked={mineOnly}
               onChange={e => setMineOnly(e.target.checked)}
             />
-            mine only
+            My processes
           </label>
-          <label className="ports-check" title="Re-forward ports you have forwarded before on this host">
+          <label className="app-check" title="Re-forward ports you have forwarded before on this host">
             <input
               type="checkbox"
               checked={auto}
               onChange={e => setAuto(e.target.checked)}
             />
-            auto
+            Restore tunnels
           </label>
-          <button className="ports-btn" onClick={load} title="Refresh">⟳</button>
-          <span className="ports-spacer" />
-          {note && <span className="ports-note">{note}</span>}
+          <span className="app-toolbar-spacer" />
+          <button className="app-button" onClick={load} disabled={busy}>Refresh</button>
         </div>
 
-        {err && <div className="ports-err">{err}</div>}
+        {err && <div className="app-notice is-error" role="alert">{err}</div>}
 
         <div className="ports-scroll">
-          <table className="ports-table">
+          <table className="ports-table" aria-label="Listening ports">
             <thead>
               <tr>
                 <th style={{ width: 78 }}>Port</th>
-                <th style={{ width: 132 }}>Bind</th>
+                <th style={{ width: 150 }}>Address</th>
                 <th>Process</th>
                 <th style={{ width: 74 }}>PID</th>
                 <th style={{ width: 96 }}>Owner</th>
-                <th style={{ width: 250 }} />
+                <th className="ports-actions-heading">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -253,50 +253,55 @@ export function createApp({ React, useFw, useApi }) {
                         {r.mine ? 'yours' : 'system'}
                       </span>
                     </td>
-                    <td className="ports-actions">
+                    <td><div className="ports-actions">
                       {local ? (
                         <>
                           <button
-                            className="ports-btn accent"
+                            className="app-button"
                             onClick={() => fw.net.openUrl(`http://localhost:${local}`)}
                           >
-                            open :{local}
+                            Open :{local}
                           </button>
-                          <button className="ports-btn" disabled={busy}
+                          <button className="app-button" disabled={busy}
                                   onClick={() => unforward(r)}>
-                            unforward
+                            Disconnect
                           </button>
                         </>
                       ) : (
-                        <button className="ports-btn" disabled={busy}
+                        <button className="app-button" disabled={busy}
                                 onClick={() => forward(r)}
                                 title="Tunnel this port to your Mac">
-                          forward
+                          Forward
                         </button>
                       )}
                       {r.mine && r.pid > 1 && (
-                        <button className="ports-btn danger" disabled={busy}
-                                onClick={() => kill(r, false)}
-                                title="SIGTERM (shift-click for SIGKILL)"
-                                onMouseDown={e => { if (e.shiftKey) { e.preventDefault(); kill(r, true) } }}>
-                          kill
+                        <button className="app-button is-danger" disabled={busy}
+                                onClick={async e => {
+                                  const force = e.shiftKey
+                                  if (await fw.ui.confirm({ title: `${force ? 'Force stop' : 'Stop'} ${r.process}?`,
+                                    message: `This ends process ${r.pid} on this machine. Its open connections will close.`,
+                                    okLabel: force ? 'Force stop' : 'Stop process', danger: true })) kill(r, force)
+                                }} title="Stop this process · Shift-click to force stop">
+                          Stop…
                         </button>
                       )}
-                    </td>
+                    </div></td>
                   </tr>
                 )
               })}
             </tbody>
           </table>
+          {!shown.length && <div className="app-empty-state" role="status"><h2>{busy ? 'Reading ports…' : 'No ports to show'}</h2>
+            <p>{busy ? 'Checking this machine’s listening connections.' : filter || mineOnly ? 'Try another filter or include all processes.' : 'Listening ports will appear here.'}</p></div>}
         </div>
 
-        <div className="ports-status">
+        <div className="app-statusbar ports-status" role="status">
           {shown.length} of {rows.length} listening
           {' · '}{rows.filter(r => r.mine).length} yours
           {' · '}{Object.keys(fwds).length} forwarded
           {' · '}{Object.keys(remembered()).length} remembered
-          {auto && ' · auto'}
-          {busy && ' · working…'}
+          {busy && ' · Working…'}
+          {note && <span className="ports-note">{note}</span>}
         </div>
       </div>
     )

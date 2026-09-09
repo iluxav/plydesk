@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
+import './apps/apps.css'
 import './fw'          // installs window.fw
 import App from './App'
 import { loadPlugins } from './ext/loader'

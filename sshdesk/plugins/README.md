@@ -13,14 +13,22 @@ plugins/
     package.json    # optional — only if you build
 ```
 
-**Plugin root**, in order of preference:
-1. `$SSHDESK_PLUGINS`
-2. `<repo>/plugins` (used during development)
-3. `~/.sshdesk/plugins`
+**Plugin roots** are merged in this order; a later folder with the same name
+replaces an earlier one:
+1. Plugins shipped inside the app bundle
+2. `~/.sshdesk/plugins`
+3. `$SSHDESK_PLUGINS` (set to this directory by the development commands)
 
-Press **⌘R** (or *sshdesk → Reload plugins*) to re-read from disk without
-restarting. Windows belonging to plugins are closed first, since their component
-identity changes.
+Use **Settings → Apps & Extensions → Reload extensions** to re-read from disk
+without restarting. Settings asks before closing open extension windows, since
+their component identity changes. The existing **⌘R** shortcut and desktop menu
+also reload plugins.
+
+System, Services (`systemctl`), Ports, and VS Code use this same extension
+mechanism. Settings discovers their app details and declared appearance controls
+from the manifest; no app-specific Settings page is required. Software installed
+on a connected machine, such as VS Code's supporting server, appears separately
+under **Remote Tools**.
 
 ---
 
@@ -30,6 +38,9 @@ identity changes.
 export const manifest = {
   id: 'ports',                    // unique; also the app id and token namespace
   name: 'Ports',                  // dock label and window title
+  description: 'Inspect listening ports and open SSH tunnels.',
+  version: '1.0.0',               // optional app version, shown in app details
+  author: 'Your name',            // optional, shown in app details
   icon: 'lucide:ethernet-port',   // a pack icon, or an emoji — both work
   window: { w: 940, h: 520 },     // optional initial size
 
@@ -66,8 +77,8 @@ export function createAdapter(sdk) { ... }   // JSON -> CLI -> JSON. Optional.
 export function createApp(ctx) { ... }       // returns a React component. Required.
 ```
 
-Nothing else is loaded. A plugin that throws during load is skipped with a
-console error; the rest of the desktop still boots.
+Nothing else is loaded. A plugin that throws during load is skipped; its error
+appears in Settings and the developer console. The rest of the desktop still boots.
 
 ---
 
@@ -150,27 +161,25 @@ mechanism; you do not need to declare the token yourself.
 
 ### Tokens: icons and colours
 
-Read a token with `sdk.token(id)`; draw an icon with the platform's `Icon`.
-The namespace is your plugin's id, so `ports.listening` is yours and
-`files.directory` is the file manager's.
+The namespace is your plugin's id, so `ports.mine` is yours and
+`files.dir_fg` is the file manager's. The platform uses your app icon in the dock,
+window title, and Settings. Color and length declarations become CSS variables
+inside your app; use those variables in your own styles.
 
-```js
-// your own token
-html`<${ctx.Icon} token="ports.listening" />`
+Settings provides icon, color (including opacity), image file, and length
+editors. Use `label` and optional `hint` text to explain each preference. These
+are appearance declarations, not a general schema for credentials, switches,
+or arbitrary app configuration. Keep additional preferences inside your app.
 
-// deliberately the same icon Files uses, so the two stay consistent
-html`<${ctx.Icon} token="files.file" />`
-```
-
-Config lives in two layers — the user's Mac and, scoped to its own windows,
-each host:
+Configuration is saved in `~/.sshdesk/config.toml` on the Mac. A machine's
+override takes precedence over the default your app declares:
 
 ```toml
-[icons]
-"ports.listening" = "desk:network"
+[machine."user@host".icons.ports]
+app = "desk:network"
 
-[theme]
-"ports.mine" = "#4ade80"
+[machine."user@host".theme.ports]
+mine = "#4ade80"
 ```
 
 An icon value is either `pack:name` or a plain glyph, so `"🔌"` stays valid and
@@ -204,8 +213,37 @@ Return a React component. `ctx` provides:
 | `html` | `htm` tagged template, for JSX-like markup with no build step |
 | `api` | Whatever `createAdapter` returned |
 | `fw` | The platform API (see below) |
+| `useApi()` | Adapter pinned to this window's machine; prefer it inside components |
+| `useFw()` | Platform API pinned to this window's machine; prefer it inside components |
+| `EmbeddedWebview` | A React component for an SSH-forwarded web app inside a desktop window |
 
 Your component receives `{ setTitle }` to set its window title.
+
+### Web apps inside the desktop
+
+Use `EmbeddedWebview` for a remote web application after forwarding its socket
+with `fw.net.forwardSocket()`. It attaches to the current desktop window;
+`fw.openWindow()` creates a separate operating-system window instead.
+
+```js
+export function createApp({ html, EmbeddedWebview }) {
+  return function App({ url }) {
+    return html`<div class="desk-app">
+      <${EmbeddedWebview} url=${url} title="My editor" />
+    </div>`
+  }
+}
+```
+
+The component accepts `url`, `title`, `onReady()`, and `onError(message)`.
+Only HTTP loopback addresses are accepted. Authentication remains the app's
+responsibility; VS Code keeps its connection token and first-party browser
+storage. Remote content receives no desktop IPC permissions.
+
+The desktop handles view geometry, minimizing, and disposal. Native views
+stay alive but hide while their window is inactive or a desktop menu/dialog
+is open, so they cannot cover desktop controls. Closing the window disposes
+the local view; stopping a remote server remains an explicit app action.
 
 ### Two ways to write markup
 
@@ -259,6 +297,29 @@ against the desktop's tokens:
 Available tokens: `--color-desk-bg`, `--color-desk-panel`, `--color-desk-line`,
 `--color-desk-fg`, `--color-desk-dim`, `--color-desk-accent`,
 `--color-desk-ok`, `--color-desk-bad`.
+
+### Shared desktop controls
+
+Use the desktop's CSS classes for the same controls as the built-in apps. These
+are available at runtime, without a Tailwind build:
+
+```js
+html`<div class="desk-app">
+  <div class="app-toolbar">
+    <label class="app-search"><input aria-label="Filter items" placeholder="Filter items" /></label>
+    <button class="app-button" onClick=${refresh}>Refresh</button>
+  </div>
+  <div class="my-scrollable-content">…</div>
+  <footer class="app-statusbar">${count} items</footer>
+</div>`
+```
+
+The shared classes include `app-button` (with `is-primary`, `is-danger`, and
+`is-icon` variants), `app-segmented`, `app-check`, `app-notice`,
+`app-empty-state`, and `app-inspector`. Supply accessible labels, real disabled
+states, and `aria-pressed` for toggles. Keep your content styles scoped to your
+own class names. A scrollable content region should use `flex: 1`,
+`min-height: 0`, and `overflow: auto`.
 
 ### Useful bits of `fw`
 
@@ -315,10 +376,11 @@ export function createAdapter(sdk) {
   }
 }
 
-export function createApp({ React, html, api }) {
+export function createApp({ React, html, useApi }) {
   return function Uptime() {
+    const api = useApi()
     const [text, setText] = React.useState('…')
-    React.useEffect(() => { api.read().then(setText).catch(e => setText(String(e))) }, [])
+    React.useEffect(() => { api.read().then(setText).catch(e => setText(String(e))) }, [api])
     return html`<div style=${{ padding: 16 }}>${text}</div>`
   }
 }

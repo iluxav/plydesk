@@ -11,21 +11,25 @@ import { useDialog } from '../wm/Dialog'
 
 let instances = 0
 
-const ROW = 28
+const ROW = 33
 
-export function FileExplorer({ setTitle }: { setTitle?: (t: string) => void }) {
+export function FileExplorer({ setTitle, path = '~' }: { setTitle?: (t: string) => void; path?: string }) {
   const [cwd, setCwd] = useState('~')
   const [d, setD] = useState<DirListing | null>(null)
   const [sel, setSel] = useState<Set<string>>(new Set())
   const [err, setErr] = useState('')
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
+  const [query, setQuery] = useState('')
+  const [showHidden, setShowHidden] = useState(false)
+  const [home, setHome] = useState('')
+  const history = useRef<{ paths: string[]; index: number }>({ paths: [], index: -1 })
+  const request = useRef(0)
+  const searchInput = useRef<HTMLInputElement>(null)
   /** True while an OS drag from Finder is hovering *this* explorer. */
   const [osDrop, setOsDrop] = useState(false)
   /** This explorer's outermost element, used to claim OS drops by hit test. */
   const root = useRef<HTMLDivElement>(null)
-  /** Last drop diagnostics, surfaced in the status bar when a drop misses. */
-  const [dropDebug, setDropDebug] = useState('')
 
   // Pinned to this window's machine, not whichever host is focused.
   const fw = useFw()
@@ -44,31 +48,44 @@ export function FileExplorer({ setTitle }: { setTitle?: (t: string) => void }) {
   const anchor = useRef<string | null>(null)
   const lastPath = useRef('')
 
-  // setTitle is rebuilt by the parent on every render; capturing it in a ref
-  // keeps `load` stable, otherwise the title dispatch re-renders the desktop,
-  // which rebuilds load, which re-runs the mount effect in a loop.
+  // Keep directory loading independent of the title callback identity.
   const titleRef = useRef(setTitle)
   useEffect(() => { titleRef.current = setTitle })
 
-  const load = useCallback(async (path: string) => {
+  const load = useCallback(async (path: string, historyIndex?: number) => {
+    const version = ++request.current
     setBusy(true); setErr(''); setNote('')
     try {
       const l = await fw.fs.list(path)
+      if (version !== request.current) return
+      if (path === '~') setHome(l.path)
+      if (historyIndex !== undefined) history.current.index = historyIndex
+      else if (history.current.paths[history.current.index] !== l.path) {
+        const paths = [...history.current.paths.slice(0, history.current.index + 1), l.path]
+        history.current = { paths, index: paths.length - 1 }
+      }
       setD(l); setCwd(l.path); cwdRef.current = l.path; setSel(new Set()); anchor.current = null
       titleRef.current?.(`Files — ${l.path}`)
       if (l.path !== lastPath.current) {
+        setQuery('')
         scroller.current?.scrollTo({ top: 0 })
         lastPath.current = l.path
       }
     } catch (e) {
-      setErr(String(e))
-    } finally { setBusy(false) }
-  }, [])
+      if (version === request.current) setErr(String(e))
+    } finally { if (version === request.current) setBusy(false) }
+  }, [fw])
+
+  const goToFolder = async () => {
+    const entered = await dlg.prompt({ title: 'Go to folder', label: 'Folder on this machine',
+      value: cwd, placeholder: '/home/username', okLabel: 'Go' })
+    if (entered) void load(entered)
+  }
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { load('~') }, [])
+  useEffect(() => { void load(path); return () => { request.current++ } }, [])
 
-  useEffect(() => { fw.prefs.hostSet('files.shortcuts', shortcuts) }, [shortcuts])
+  useEffect(() => { fw.prefs.hostSet('files.shortcuts', shortcuts) }, [fw, shortcuts])
 
   // One handler per window; the destination arrives as `arg` from the element.
   useDropTarget(dropId, (payload, { meta, arg }) => transfer(payload.paths, arg, meta))
@@ -120,15 +137,7 @@ export function FileExplorer({ setTitle }: { setTitle?: (t: string) => void }) {
 
         setOsDrop(false)
         const dest = targetAt(p.position)
-        if (!dest) {
-          // Only the explorer under the cursor should act, so a miss is normal
-          // when several are open. Record it anyway: "every window ignored it"
-          // is the signature of a coordinate-space bug, and silence hides that.
-          const dpr = window.devicePixelRatio || 1
-          setDropDebug(`drop at ${Math.round(p.position.x)},${Math.round(p.position.y)} `
-            + `(dpr ${dpr}) did not land on this window`)
-          return
-        }
+        if (!dest) return
         if (!p.paths?.length) return
 
         setBusy(true); setErr(''); setNote('')
@@ -147,9 +156,17 @@ export function FileExplorer({ setTitle }: { setTitle?: (t: string) => void }) {
   useEffect(() => fw.bus.on('fs:changed', (p: { dirs?: string[]; from?: number }) => {
     if (p?.from === selfId) return
     if (p?.dirs?.some(d => d === cwdRef.current)) load(cwdRef.current)
-  }), [load, selfId])
+  }), [fw, load, selfId])
 
-  const entries = useMemo(() => d?.entries ?? [], [d])
+  const entries = useMemo(() => (d?.entries ?? []).filter(e =>
+    (showHidden || !e.name.startsWith('.')) && e.name.toLocaleLowerCase().includes(query.toLocaleLowerCase()),
+  ), [d, query, showHidden])
+  const navigateHistory = (offset: number) => {
+    const index = history.current.index + offset
+    const path = history.current.paths[index]
+    if (path) void load(path, index)
+  }
+  const toggleHidden = () => { setShowHidden(v => !v); setSel(new Set()) }
 
   const act = async (fn: () => Promise<unknown>) => {
     setErr('')
@@ -217,7 +234,8 @@ export function FileExplorer({ setTitle }: { setTitle?: (t: string) => void }) {
     }
     if (meta) {
       const n = new Set(sel)
-      n.has(e.name) ? n.delete(e.name) : n.add(e.name)
+      if (n.has(e.name)) n.delete(e.name)
+      else n.add(e.name)
       setSel(n)
     } else {
       setSel(new Set([e.name]))
@@ -347,9 +365,28 @@ export function FileExplorer({ setTitle }: { setTitle?: (t: string) => void }) {
   return (
     <div
       ref={root}
-      className="relative flex h-full bg-desk-panel text-desk-fg outline-none"
+      className="files-browser relative flex h-full bg-desk-panel text-desk-fg outline-none"
       tabIndex={0}
       onKeyDown={ev => {
+        if ((ev.metaKey || ev.ctrlKey) && ev.shiftKey && ev.key.toLowerCase() === 'g') {
+          ev.preventDefault(); void goToFolder(); return
+        }
+        if ((ev.target as HTMLElement).closest('input, textarea, [contenteditable="true"]')) return
+        if ((ev.metaKey || ev.ctrlKey) && ev.key === 'f') {
+          ev.preventDefault(); searchInput.current?.focus(); return
+        }
+        if ((ev.metaKey || ev.ctrlKey) && ev.shiftKey && ev.code === 'Period') {
+          ev.preventDefault(); toggleHidden(); return
+        }
+        if (ev.altKey && ev.key === 'ArrowLeft') { ev.preventDefault(); navigateHistory(-1); return }
+        if (ev.altKey && ev.key === 'ArrowRight') { ev.preventDefault(); navigateHistory(1); return }
+        if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+          ev.preventDefault()
+          const current = entries.findIndex(e => e.name === [...sel].at(-1))
+          const next = current < 0 ? 0 : Math.max(0, Math.min(entries.length - 1, current + (ev.key === 'ArrowDown' ? 1 : -1)))
+          if (entries[next]) { setSel(new Set([entries[next].name])); anchor.current = entries[next].name; virt.scrollToIndex(next) }
+          return
+        }
         if ((ev.metaKey || ev.ctrlKey) && ev.key === 'a') {
           ev.preventDefault(); setSel(new Set(entries.map(e => e.name)))
         } else if (ev.key === 'Escape') {
@@ -369,6 +406,7 @@ export function FileExplorer({ setTitle }: { setTitle?: (t: string) => void }) {
     >
       <FileSidebar
         cwd={cwd}
+        home={home}
         shortcuts={shortcuts}
         dropId={dropId}
         onGo={load}
@@ -376,54 +414,52 @@ export function FileExplorer({ setTitle }: { setTitle?: (t: string) => void }) {
       />
 
       <div className="flex flex-col flex-1 min-w-0">
-      {/* toolbar */}
-      <div className="flex items-center gap-1 px-2 py-1.5 border-b border-desk-line shrink-0">
-        <button onClick={() => load(fw.path.parent(cwd))} disabled={cwd === '/'}
-          title="Up" className="px-2 py-1 rounded hover:bg-white/10 disabled:opacity-30">↑</button>
-        <button onClick={() => load(cwd)} title="Refresh"
-          className="px-2 py-1 rounded hover:bg-white/10">⟳</button>
-        <div className="w-px h-5 bg-desk-line mx-1" />
-
-        <div className="flex items-center gap-0.5 text-xs overflow-x-auto flex-1 min-w-0">
-          <button onClick={() => load('/')} className="px-1 rounded hover:bg-white/10 text-desk-accent">/</button>
-          {parts.map((p, i) => (
-            <span key={i} className="flex items-center gap-0.5 shrink-0">
-              <button onClick={() => load('/' + parts.slice(0, i + 1).join('/'))}
-                className="px-1 rounded hover:bg-white/10 text-desk-accent">{p}</button>
-              {i < parts.length - 1 && <span className="text-desk-dim">/</span>}
-            </span>
-          ))}
-        </div>
-
-        <button
-          title="New folder"
-          aria-label="New folder"
+      <div className="files-toolbar" role="toolbar" aria-label="File navigation">
+        <button className="files-tool" title="Back (⌥←)" aria-label="Back" disabled={history.current.index <= 0 || busy}
+          onClick={() => navigateHistory(-1)}><Icon id="lucide:chevron-left" size={17} /></button>
+        <button className="files-tool" title="Forward (⌥→)" aria-label="Forward" disabled={history.current.index >= history.current.paths.length - 1 || busy}
+          onClick={() => navigateHistory(1)}><Icon id="lucide:chevron-right" size={17} /></button>
+        <button className="files-tool" title="Enclosing folder" aria-label="Enclosing folder" disabled={cwd === '/' || busy}
+          onClick={() => load(fw.path.parent(cwd))}><Icon id="lucide:arrow-up" size={15} /></button>
+        <span className="menubar-divider" />
+        <button className="files-tool" title="Refresh" aria-label="Refresh" disabled={busy} onClick={() => load(cwd)}>
+          <Icon id="lucide:rotate-cw" size={14} /></button>
+        <button className="files-tool" title="New folder" aria-label="New folder" disabled={busy || !d}
           onClick={async () => {
-            const n = await dlg.prompt({ title: 'New folder', label: `Create inside ${cwd}`,
-                                         placeholder: 'folder name', okLabel: 'Create' })
+            const n = await dlg.prompt({ title: 'New folder', label: `Create inside ${cwd}`, placeholder: 'Folder name', okLabel: 'Create' })
             if (n) act(() => fw.fs.mkdir(fw.path.join(cwd, n)))
-          }}
-          className="px-2 py-1 rounded hover:bg-white/10 shrink-0"
-        >
-          <svg viewBox="0 0 20 20" className="w-4 h-4" fill="none" stroke="currentColor"
-               strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M2.5 5.6a1 1 0 0 1 1-1h3.3a1 1 0 0 1 .8.4l.9 1.2h6.9a1 1 0 0 1 1 1v7.2a1 1 0 0 1-1 1h-11.9a1 1 0 0 1-1-1z" />
-            <path d="M10 9.6v4M8 11.6h4" />
-          </svg>
-        </button>
+          }}><Icon id="lucide:folder-plus" size={16} /></button>
+        <button className="files-tool" title={`${showHidden ? 'Hide' : 'Show'} hidden files (⌘⇧.)`}
+          aria-label="Show hidden files" aria-pressed={showHidden} onClick={toggleHidden}>
+          <Icon id={showHidden ? 'lucide:eye' : 'lucide:eye-off'} size={16} /></button>
+        <label className="files-search"><Icon id="lucide:search" size={13} />
+          <input ref={searchInput} aria-label="Search this folder" placeholder="Search this folder" value={query} spellCheck={false}
+            onChange={e => { setQuery(e.target.value); setSel(new Set()); scroller.current?.scrollTo({ top: 0 }) }}
+            onKeyDown={e => { if (e.key === 'Escape') { setQuery(''); root.current?.focus() } }} />
+          {query && <button aria-label="Clear search" onClick={() => { setQuery(''); searchInput.current?.focus() }}>
+            <Icon id="lucide:x" size={12} /></button>}
+        </label>
       </div>
+      <nav className="files-breadcrumbs" aria-label="Folder path">
+        <button aria-label="File system" onClick={() => load('/')}><Icon id="lucide:hard-drive" size={13} /></button>
+        {parts.map((part, i) => <span key={i} className="flex items-center gap-1 shrink-0">
+          <Icon id="lucide:chevron-right" size={10} />
+          <button aria-current={i === parts.length - 1 ? 'location' : undefined}
+            onClick={() => load('/' + parts.slice(0, i + 1).join('/'))}>{part}</button>
+        </span>)}
+        <button className="files-go-to" title="Go to folder (⌘⇧G)" onClick={() => void goToFolder()}>Go to folder…</button>
+      </nav>
 
       {err && (
         <div className="px-3 py-1.5 text-xs bg-desk-bad/15 text-desk-bad border-b border-desk-bad/30
                         shrink-0 select-text break-all">{err}</div>
       )}
 
-      <div className="flex px-3 py-1 text-[10px] uppercase tracking-wide text-desk-dim
-                      border-b border-desk-line shrink-0">
+      <div className="files-columns">
         <span className="flex-1">Name</span>
         <span className="w-20 text-right">Size</span>
-        <span className="w-24 pl-3">Mode</span>
-        <span className="w-32 pl-3">Modified</span>
+        <span className="files-permissions w-24 pl-3">Permissions</span>
+        <span className="files-modified w-32 pl-3">Modified</span>
       </div>
 
       {/* list — click the empty area below to clear the selection */}
@@ -437,17 +473,21 @@ export function FileExplorer({ setTitle }: { setTitle?: (t: string) => void }) {
              if (ev.target === ev.currentTarget) { setSel(new Set()); menu.open(ev, itemsForBackground()) }
            }}
            >
-        <div style={{ height: virt.getTotalSize(), position: 'relative' }}>
+        <div role="listbox" aria-label="Files and folders" aria-multiselectable="true" aria-busy={busy} style={{ height: virt.getTotalSize(), position: 'relative' }}>
           {virt.getVirtualItems().map(v => {
             const e = entries[v.index]
             const isSel = sel.has(e.name)
             return (
               <div
                 key={e.name}
+                role="option" aria-selected={isSel} aria-label={e.name}
+                data-selected={isSel} data-kind={e.kind}
                 {...(e.kind === 'dir' ? dropProps(dropId, fw.path.join(cwd, e.name)) : {})}
                 onPointerDown={ev => {
+                  if (ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey) return
+                  root.current?.focus()
                   const list = sel.has(e.name) ? selected : [e]
-                  if (!sel.has(e.name)) { setSel(new Set([e.name])); anchor.current = e.name }
+                  if (!sel.has(e.name)) setSel(new Set([e.name]))
                   const paths = list.map(x => fw.path.join(cwd, x.name))
                   const label = list.length === 1 ? list[0].name : `${list.length} items`
 
@@ -482,65 +522,47 @@ export function FileExplorer({ setTitle }: { setTitle?: (t: string) => void }) {
                 }}
                 style={{ position: 'absolute', top: 0, left: 0, right: 0,
                          height: ROW, transform: `translateY(${v.start}px)` }}
-                className={`flex items-center px-3 text-xs cursor-default select-none
+                className={`files-row flex items-center px-4 text-xs cursor-default select-none
                             ${drag?.over?.id === dropId
                                 && drag.over.arg === fw.path.join(cwd, e.name)
                               ? 'bg-desk-accent/50 ring-1 ring-inset ring-desk-accent'
                               : isSel ? 'bg-desk-accent/30' : 'hover:bg-[var(--files-row-hover)]'}`}
               >
-                <span className="w-5 shrink-0 flex items-center opacity-90">
+                <span className="file-icon w-6 shrink-0 flex items-center">
                   <Icon
                     token={e.kind === 'dir' ? 'files.directory'
                          : e.kind === 'link' ? 'files.link' : 'files.file'}
-                    host={fw.host.current()} size={15} />
+                    host={fw.host.current()} size={17} />
                 </span>
-                {/* Colour comes from a token that defaults to @desk.accent, so
-                    retinting the desktop moves folder names with it — and
-                    pointing it at a literal breaks the link deliberately. */}
-                <span className="flex-1 truncate"
-                      style={e.kind === 'dir' ? { color: 'var(--files-dir-fg)' } : undefined}>
+                <span className="flex-1 truncate">
                   {e.name}
                 </span>
                 <span className="w-20 text-right text-desk-dim font-mono">
                   {e.kind === 'dir' ? '' : fw.fmt.size(e.size)}
                 </span>
-                <span className="w-24 pl-3 text-desk-dim font-mono">{e.mode}</span>
-                <span className="w-32 pl-3 text-desk-dim">{fw.fmt.time(e.mtime)}</span>
+                <span className="files-permissions w-24 pl-3 text-desk-dim font-mono text-[10px]">{e.mode}</span>
+                <span className="files-modified w-32 pl-3 text-desk-dim text-[11px]">{fw.fmt.time(e.mtime)}</span>
               </div>
             )
           })}
         </div>
+        {busy && !d && <div className="files-loading" role="status"><span className="ui-spinner" /> Loading files…</div>}
         {!busy && entries.length === 0 && !err && (
-          <p className="p-4 text-xs text-desk-dim">empty directory</p>
+          <div className="files-empty"><Icon id={query ? 'lucide:search' : 'desk:folder-open'} size={34} />
+            <strong>{query ? 'No matching files' : 'This folder is empty'}</strong>
+            <p>{query ? 'Try another name or show hidden files.' : 'Drag files here or create a new folder.'}</p>
+          </div>
         )}
       </div>
 
-      {/* status */}
-      <div className="flex items-center gap-2 px-3 py-1.5 text-[11px] text-desk-dim
-                      border-t border-desk-line shrink-0">
-        <span>{entries.length} items</span>
-        {sel.size > 0 && <span className="text-desk-fg">· {sel.size} selected</span>}
-        {d && d.disk.total > 0 && (
-          <span>· {fw.fmt.size(d.disk.avail)} free of {fw.fmt.size(d.disk.total)}</span>
-        )}
-        {d?.server_side_copy && (
-          <span title="copy-data: the server copies files itself, bytes never cross the network">
-            · server-side copy
-          </span>
-        )}
-        {d && <span>· {d.elapsed_ms.toFixed(0)} ms</span>}
-        {note && <span className="text-desk-ok">· {note}</span>}
-        {dropDebug && <span className="text-desk-dim" title={dropDebug}>· drop missed</span>}
-        {sel.size > 0 && !note && (
-          <span title="Drag a file out of this window to copy it to your Mac">
-            · drag out → your Mac
-          </span>
-        )}
-
+      <footer className="files-status" role="status">
+        {busy ? <><span className="ui-spinner" /><span>Loading…</span></> : <span>{entries.length} {entries.length === 1 ? 'item' : 'items'}</span>}
+        {selected.length > 0 && <span className="text-desk-fg">· {selected.length} selected</span>}
+        {!showHidden && !!d?.entries.some(e => e.name.startsWith('.')) && <span>· Hidden files off</span>}
+        {note && <span className="text-desk-ok">{note}</span>}
+        {d && d.disk.total > 0 && <span className="files-status-space">{fw.fmt.size(d.disk.avail)} available</span>}
+      </footer>
       </div>
-
-      </div>
-
     </div>
   )
 }

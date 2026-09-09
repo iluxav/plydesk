@@ -13,6 +13,7 @@
 export const manifest = {
   id: 'systemctl',
   name: 'Services',
+  description: 'Inspect and manage systemd services.',
   icon: 'desk:service',
   window: { w: 940, h: 580 },
 }
@@ -106,10 +107,13 @@ export function createAdapter(sdk) {
   }
 }
 
-export function createApp({ React, html, api, fw }) {
-  const { useState, useEffect, useCallback, useMemo } = React
+export function createApp({ React, html, useApi, useFw }) {
+  const { useState, useEffect, useCallback, useMemo, useRef } = React
 
   return function Services({ setTitle }) {
+    const api = useApi()
+    const fw = useFw()
+    const detailRequest = useRef(0)
     const [units, setUnits] = useState([])
     const [filter, setFilter] = useState('')
     const [onlyRunning, setOnlyRunning] = useState(false)
@@ -127,7 +131,7 @@ export function createApp({ React, html, api, fw }) {
       try { setUnits(await api.list()) }
       catch (e) { setErr(String(e)) }
       finally { setBusy(false) }
-    }, [])
+    }, [api])
 
     useEffect(() => { load() }, [load])
 
@@ -202,88 +206,63 @@ export function createApp({ React, html, api, fw }) {
     }
 
     const show = async u => {
+      const request = ++detailRequest.current
       if (sel && sel.unit === u.unit) { setSel(null); setDetail(''); return }
-      setSel(u); setDetail('loading\u2026')
-      try { setDetail(await api.status(u.unit)) }
-      catch (e) { setDetail(String(e)) }
+      setSel(u); setDetail('Loading service details…')
+      try { const text = await api.status(u.unit); if (request === detailRequest.current) setDetail(text) }
+      catch (e) { if (request === detailRequest.current) setDetail(String(e)) }
     }
 
-    const dot = u =>
-      u.sub === 'running' ? 'bg-desk-ok'
-      : u.active === 'failed' ? 'bg-desk-bad'
-      : 'bg-desk-dim/50'
-
+    const selected = sel ? units.find(u => u.unit === sel.unit) || sel : null
+    const closeDetail = () => { detailRequest.current++; setSel(null); setDetail('') }
     const VERBS = ['start', 'stop', 'restart', 'enable', 'disable']
 
     return html`
-      <div class="flex flex-col h-full bg-desk-panel text-desk-fg">
-
-        <div class="flex items-center gap-2 px-2 py-1.5 border-b border-desk-line shrink-0">
-          <input
-            value=${filter}
-            placeholder="filter services"
-            spellcheck="false"
-            onInput=${e => setFilter(e.target.value)}
-            class="bg-black/40 border border-desk-line rounded px-2 py-1 text-xs w-56
-                   outline-none focus:border-desk-accent select-text" />
-          <label class="flex items-center gap-1 text-[11px] text-desk-dim">
-            <input type="checkbox" checked=${onlyRunning}
-                   onChange=${e => setOnlyRunning(e.target.checked)} />
-            running only
-          </label>
-          <button onClick=${load} class="px-2 py-1 rounded hover:bg-white/10 text-xs">\u27F3</button>
-          <span class="ml-auto flex gap-1">
-            ${VERBS.map(v => html`
-              <button key=${v} disabled=${!sel || busy} onClick=${() => act(v)}
-                class="px-2 py-1 rounded text-xs border border-desk-line
-                       hover:bg-white/10 disabled:opacity-30">${v}</button>`)}
-          </span>
+      <div class="desk-app sc-root">
+        <div class="app-toolbar" role="toolbar" aria-label="Service filters">
+          <label class="app-search"><input value=${filter} placeholder="Filter services by name or description"
+            aria-label="Filter services" spellCheck=${false} onInput=${e => setFilter(e.target.value)} /></label>
+          <label class="app-check"><input type="checkbox" checked=${onlyRunning}
+            onChange=${e => setOnlyRunning(e.target.checked)} />Running only</label>
+          <span class="app-toolbar-spacer"></span>
+          <button class="app-button" onClick=${load} disabled=${busy}>Refresh</button>
         </div>
-
-        ${err && html`
-          <div class="px-3 py-1.5 text-xs bg-desk-bad/15 text-desk-bad
-                      border-b border-desk-bad/30 shrink-0 select-text break-all">${err}</div>`}
-
-        <div class="flex flex-1 min-h-0 overflow-hidden">
-          <div class="flex-1 min-w-0 overflow-auto">
-            <table class="w-full text-xs"><tbody>
+        ${err && html`<div class="app-notice is-error" role="alert">${err}</div>`}
+        <div class="app-split">
+          <div class="sc-list">
+            <table class="sc-table" aria-label="System services"><thead><tr><th>Service</th><th>Status</th></tr></thead><tbody>
               ${rows.map(u => html`
-                <tr key=${u.unit} onClick=${() => show(u)}
-                    class=${'cursor-default ' + (sel && sel.unit === u.unit
-                      ? 'bg-desk-accent/25' : 'hover:bg-white/5')}>
-                  <td class="px-3 py-1 w-4">
-                    <span class=${'inline-block w-1.5 h-1.5 rounded-full ' + dot(u)}></span>
-                  </td>
-                  <td class="py-1 font-mono truncate">${u.unit}</td>
-                  <td class="py-1 px-2 text-desk-dim truncate">${u.description || ''}</td>
-                  <td class="py-1 px-2 w-20 text-desk-dim">${u.sub || ''}</td>
+                <tr key=${u.unit} class=${sel?.unit === u.unit ? 'is-selected' : ''}>
+                  <td><button class="sc-service" aria-label=${`Details for ${u.unit}`} aria-pressed=${sel?.unit === u.unit}
+                    onClick=${() => show(u)}>
+                    <span class=${'sc-service-dot ' + (u.active === 'failed' ? 'is-bad' : u.sub === 'running' ? 'is-good' : '')}></span>
+                    <span><strong>${u.unit.replace(/\.service$/, '')}</strong><small>${u.description || u.unit}</small></span>
+                  </button></td>
+                  <td><span class=${'app-state ' + (u.active === 'failed' ? 'is-bad' : u.sub === 'running' ? 'is-good' : '')}>
+                    ${u.sub ? u.sub.charAt(0).toUpperCase() + u.sub.slice(1) : 'Unknown'}</span></td>
                 </tr>`)}
             </tbody></table>
+            ${!rows.length && html`<div class="app-empty-state" role="status"><h2>${busy ? 'Reading services…' : 'No services found'}</h2>
+              <p>${busy ? 'Checking systemd on this machine.' : 'Try another filter or include stopped services.'}</p></div>`}
           </div>
-
-          ${sel && html`
-            <div class="sysctl-detail">
-              <div class="sysctl-detail-head">
-                <span class="font-mono truncate">${sel.unit}</span>
-                <button class="sysctl-close" title="Back to list"
-                        onClick=${() => { setSel(null); setDetail('') }}>\u00D7</button>
+          ${selected && html`
+            <aside class="app-inspector sc-inspector" aria-label="Service details">
+              <header class="app-inspector-header"><div><h2>${selected.unit}</h2><p>${selected.description}</p></div>
+                <button class="app-button is-icon" aria-label="Close service details" title="Back to list" onClick=${closeDetail}>×</button></header>
+              <div class="sc-detail-state"><span class=${'app-state ' + (selected.active === 'failed' ? 'is-bad' : selected.sub === 'running' ? 'is-good' : '')}>${selected.active} · ${selected.sub}</span></div>
+              <div class="app-inspector-actions" aria-label=${`Actions for ${selected.unit}`}>
+                ${VERBS.map(v => html`<button key=${v} class=${'app-button ' + (v === 'stop' ? 'is-danger' : '')}
+                  disabled=${busy} onClick=${() => act(v)}>${v.charAt(0).toUpperCase() + v.slice(1)}</button>`)}
               </div>
-              <pre class="sysctl-log">${detail}</pre>
-            </div>`}
+              <h3 class="sc-log-heading">Status & recent activity</h3>
+              <pre class="sc-log">${detail}</pre>
+            </aside>`}
         </div>
-
-        <div class="px-3 py-1.5 text-[11px] text-desk-dim border-t border-desk-line shrink-0">
-          ${rows.length} of ${units.length} services${sel ? ' \u00B7 ' + sel.unit : ''}${busy ? ' \u00B7 working\u2026' : ''}
-          ${live && html`<span class="sc-live" title=${
-            pushes
-              ? `${pushes} push(es) from systemd; last ${Math.round((Date.now() - lastPush) / 1000)}s ago`
-              : 'subscribed to systemd — nothing has changed on this host yet'
-          }> \u00B7 <span class="sc-dot"></span> live${
-            pushes ? ` \u00B7 ${pushes} push${pushes === 1 ? '' : 'es'}` : ''
-          }${
-            lastPush ? ` \u00B7 ${Math.round((Date.now() - lastPush) / 1000)}s ago` : ''
-          }</span>`}
-        </div>
+        <footer class="app-statusbar"><span>${rows.length} of ${units.length} services</span>
+          ${busy && html`<span>Refreshing…</span>`}
+          <span class="app-status-end sc-live" title=${pushes ? `${pushes} systemd events received; last ${Math.round((Date.now() - lastPush) / 1000)}s ago` : 'Waiting for systemd changes'}>
+            ${live && html`<span class="sc-dot"></span>`}${live ? 'Live updates' : 'Manual refresh'}</span>
+        </footer>
       </div>`
   }
 }

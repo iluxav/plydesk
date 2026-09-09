@@ -1,60 +1,22 @@
-/* Styles for the Services plugin.
-   Plain CSS against the desktop's design tokens, so this works regardless of
-   whether Tailwind ever scanned this plugin. */
-
-.sysctl-detail {
-  width: 440px;
-  flex: 0 0 440px;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  border-left: 1px solid var(--color-desk-line);
-  overflow: hidden;
-}
-
-.sysctl-detail-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  font-size: 11px;
-  flex: 0 0 auto;
-  border-bottom: 1px solid var(--color-desk-line);
-  background: rgb(255 255 255 / 0.03);
-}
-
-.sysctl-close {
-  margin-left: auto;
-  flex: 0 0 auto;
-  width: 20px;
-  height: 20px;
-  border-radius: 4px;
-  line-height: 1;
-  color: var(--color-desk-dim);
-}
-.sysctl-close:hover { background: rgb(255 255 255 / 0.1); color: var(--color-desk-fg); }
-
-.sysctl-log {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: auto;
-  margin: 0;
-  padding: 10px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px;
-  line-height: 1.5;
-  /* long log lines must wrap, not widen the pane */
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  user-select: text;
-}
-
-/* Push-activity indicator. A subscription that is working but quiet looks
-   identical to one that is broken, so make the difference visible. */
-.sc-live { color: var(--color-desk-dim); }
-.sc-dot {
-  display: inline-block; width: 6px; height: 6px; border-radius: 50%;
-  background: var(--color-desk-ok); vertical-align: middle;
-  animation: sc-pulse 2s ease-in-out infinite;
-}
-@keyframes sc-pulse { 0%, 100% { opacity: .35 } 50% { opacity: 1 } }
+/* Services uses the shared desktop controls; these styles belong to its data view. */
+.sc-list { flex: 1; min-width: 0; overflow: auto; }
+.sc-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.sc-table th { text-align: left; font-size: 10px; font-weight: 500; color: var(--color-desk-dim); background: var(--color-desk-panel);
+  border-bottom: 1px solid var(--color-desk-line); padding: 9px 15px; position: sticky; top: 0; z-index: 1; }
+.sc-table th:last-child { width: 102px; }
+.sc-table td { border-bottom: 1px solid #ffffff06; }
+.sc-table td:last-child { padding-right: 12px; }
+.sc-table tr:not(.is-selected):hover td { background: #ffffff04; }.sc-table .is-selected td { background: var(--color-desk-selection); }
+.sc-service { display: flex; align-items: center; gap: 11px; width: 100%; min-height: 54px; padding: 10px 15px; text-align: left; }
+.sc-service > span:last-child { display: grid; gap: 5px; min-width: 0; }
+.sc-service strong { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-service small { font-size: 10px; color: var(--color-desk-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-service-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; background: var(--color-desk-dim); opacity: .5; }
+.sc-service-dot.is-good, .sc-dot { background: var(--color-desk-ok); opacity: 1; }.sc-service-dot.is-bad { background: var(--color-desk-bad); opacity: 1; }
+.sc-inspector { width: 380px; }
+.sc-detail-state { padding: 13px 15px 0; }.sc-inspector .app-inspector-actions { border-top: 0; }
+.sc-log-heading { padding: 14px 15px 3px; font-size: 10px; font-weight: 500; color: var(--color-desk-dim); }
+.sc-log { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 11px 15px; font: 11px/1.75 ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+.sc-live { display: inline-flex; align-items: center; gap: 6px; }
+.sc-dot { display: inline-block; width: 5px; height: 5px; border-radius: 50%; }
