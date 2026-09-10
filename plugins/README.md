@@ -545,7 +545,7 @@ machine, for **Run commands**.
 
 ## Development checks
 
-From the sshdesk project directory:
+From the repository root:
 
 ```sh
 make test

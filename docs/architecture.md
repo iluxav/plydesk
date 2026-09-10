@@ -1,6 +1,9 @@
-# sshdesk — spike
+# Architecture
 
-Proves the architecture: **a local GUI that drives real Linux boxes over plain SSH,
+How sshdesk is put together, what was measured, and what is still open. The
+product overview and install steps are in the [README](../README.md).
+
+The idea it proves: **a local GUI that drives real Linux boxes over plain SSH,
 with nothing installed on the remote.**
 
 ```
@@ -68,7 +71,7 @@ the app's `manifest.json` permissions and the machine the window was opened
 on. The first time an app opens on a machine, sshdesk lists what it asks for
 and waits for your approval before running its code; approvals are per app
 and per machine, and can be revoked in **Settings → Apps & Extensions**.
-[plugins/README.md](plugins/README.md) has the permission list and the
+[plugins/README.md](../plugins/README.md) has the permission list and the
 security model.
 
 ## The three decisions that matter

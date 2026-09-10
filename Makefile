@@ -82,8 +82,12 @@ ui-install:
 dev: kill
 	@cd src-tauri && SSHDESK_PLUGINS=$(CURDIR)/plugins node ../ui/node_modules/@tauri-apps/cli/tauri.js dev
 
-## test: native and loader unit tests (app runtime, permissions, developer registrations)
+## test: unit tests for core, the app runtime, and the desktop UI
+#
+# Live tests against a real machine are #[ignore]d; see the comments beside
+# them for the SSHDESK_TEST_HOST invocation.
 test:
+	@cargo test --manifest-path core/Cargo.toml
 	@cargo test --manifest-path src-tauri/Cargo.toml
 	@node --experimental-vm-modules --test "ui/tests/*.test.mjs"
 

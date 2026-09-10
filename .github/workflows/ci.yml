@@ -1,0 +1,45 @@
+name: ci
+
+# Every push and pull request: lint, unit tests, and the app runtime's
+# permission-gateway tests. No bundle is produced; that is release.yml.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    # The app crate links Cocoa and WebKit, so this has to be macOS.
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src-tauri -> target
+            core -> target
+
+      - name: Install UI dependencies
+        working-directory: ui
+        run: npm ci
+
+      - name: Lint plugins
+        run: make lint-plugins
+
+      # tauri-build embeds ui/dist, so the app crate needs the frontend built
+      # before its tests can compile.
+      - name: Build the UI
+        working-directory: ui
+        run: npm run build
+
+      - name: Tests
+        run: make test

@@ -29,11 +29,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Node 24: the UI tests import TypeScript sources directly and rely on
+      # the type stripping that is on by default from 23.6.
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
-          cache-dependency-path: sshdesk/ui/package-lock.json
+          cache-dependency-path: ui/package-lock.json
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -44,37 +46,51 @@ jobs:
           # core is its own package with its own target dir, so the unit-test
           # step rebuilds it from scratch unless it is cached too.
           workspaces: |
-            sshdesk/src-tauri -> target
-            sshdesk/core -> target
+            src-tauri -> target
+            core -> target
           key: ${{ matrix.target }}
 
       - name: Install UI dependencies
-        working-directory: sshdesk/ui
+        working-directory: ui
         run: npm ci
 
       # The plugin lint is cheap and catches a mistake that unmounts the app at
       # runtime, so it runs before anything is built.
       - name: Lint plugins
-        working-directory: sshdesk
         run: make lint-plugins
 
+      # tauri-build embeds ui/dist, so the app crate cannot even compile its
+      # tests until the frontend exists. The Tauri CLI rebuilds it later; the
+      # second run is a couple of seconds.
+      - name: Build the UI
+        working-directory: ui
+        run: npm run build
+
       - name: Unit tests
-        working-directory: sshdesk
-        run: cargo test --release --manifest-path core/Cargo.toml
         # The live tests need a reachable host and are marked #[ignore], so
         # this runs only what can pass without one.
+        run: |
+          cargo test --release --manifest-path core/Cargo.toml
+          node --experimental-vm-modules --test "ui/tests/*.test.mjs"
+
+      # The app runtime tests cover the permission gateway. Native for the
+      # runner only: the Intel binaries cannot run here, and --target shares
+      # the release artifacts with the build below.
+      - name: App runtime tests
+        if: matrix.arch == 'aarch64'
+        run: cargo test --release --manifest-path src-tauri/Cargo.toml --target ${{ matrix.target }}
 
       # The npm CLI, not `cargo install tauri-cli`. That step compiled the CLI
       # from source on every run and took 414 of the job's 707 seconds; this
       # one is a prebuilt binary that npm ci has already fetched.
       - name: Build
-        working-directory: sshdesk/src-tauri
+        working-directory: src-tauri
         run: node ../ui/node_modules/@tauri-apps/cli/tauri.js build --target ${{ matrix.target }}
 
       # A --target build nests the output under the triple.
       - name: Package
         id: package
-        working-directory: sshdesk/src-tauri/target/${{ matrix.target }}/release/bundle/macos
+        working-directory: src-tauri/target/${{ matrix.target }}/release/bundle/macos
         run: |
           TAG="${GITHUB_REF_NAME}"
           # An `if` rather than `[ … ] && …`: that form survives `set -e` only

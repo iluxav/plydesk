@@ -56,22 +56,27 @@ starting `systemctl`.
 
 ## Apps
 
-Built-in apps and plugins are the same thing. A plugin is a directory with an
-`index.js` that declares what it needs — the tokens it owns, the content types
-it opens, the software it requires on the remote — and sshdesk resolves the
-rest. VS Code is a plugin, and adding it needed no change to sshdesk itself.
+Built-in apps and plugins are the same thing to the desktop. A plugin is a
+directory with a `manifest.json` that declares what it needs — the permissions
+it uses, the tokens it owns, the content types it opens, the software it
+requires on the remote — and an `index.js` that runs in its own isolated view
+once you have approved that access. VS Code is a plugin, and adding it needed
+no change to sshdesk itself.
 
-See [`sshdesk/plugins/README.md`](sshdesk/plugins/README.md).
+See [`plugins/README.md`](plugins/README.md) for the plugin guide and the
+security model, and [`examples/hello-app`](examples/hello-app) for a starting
+point.
 
 ## Building
 
 ```sh
-cd sshdesk
-make run                                    # rebuild and launch
-make probe HOST=user@box                    # verify against a real machine
-cargo test --manifest-path core/Cargo.toml  # unit tests
+make run                    # rebuild and launch
+make test                   # unit tests: core, app runtime, desktop UI
+make probe HOST=user@box    # verify the whole stack against a real machine
+make help                   # every target
 ```
 
 `make probe` is the useful one: it asserts the whole stack against a live host
 by content rather than exit code, and has caught every interesting bug in this
-codebase.
+codebase. [`docs/architecture.md`](docs/architecture.md) explains how the
+pieces fit, what was measured, and what is not done yet.
