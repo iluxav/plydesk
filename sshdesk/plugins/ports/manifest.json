@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "ports",
+  "name": "Ports",
+  "description": "Inspect listening ports and open SSH tunnels.",
+  "icon": "lucide:ethernet-port",
+  "window": {
+    "w": 940,
+    "h": 520
+  },
+  "version": "1.0.0",
+  "permissions": [
+    "remote.exec",
+    "remote.sudo",
+    "remote.tunnels",
+    "desktop.openUrl"
+  ]
+}

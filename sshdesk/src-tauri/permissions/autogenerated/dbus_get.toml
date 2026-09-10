@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-dbus-get"
+description = "Enables the dbus_get command without any pre-configured scope."
+commands.allow = ["dbus_get"]
+
+[[permission]]
+identifier = "deny-dbus-get"
+description = "Denies the dbus_get command without any pre-configured scope."
+commands.deny = ["dbus_get"]

@@ -1,0 +1,21 @@
+.runtime-body { margin: 0; overflow: hidden; background: var(--color-desk-panel); color: var(--color-desk-fg); }
+.runtime-body #root { width: 100vw; height: 100vh; overflow: hidden; }
+.runtime-failure { display: grid; place-content: center; padding: 32px; font-size: 13px; }
+.app-runtime-host { display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; position: relative; background: var(--color-desk-panel); }
+.app-runtime-slot { flex: 1; min-height: 0; position: relative; overflow: hidden; }
+.app-runtime-placeholder { height: 100%; display: grid; place-content: center; justify-items: center; gap: 10px; color: var(--color-desk-dim); font-size: 12px; }
+.app-runtime-placeholder strong { color: var(--color-desk-fg); font-size: 15px; font-weight: 500; }
+.app-runtime-preview { width: 100%; height: 100%; object-fit: fill; pointer-events: none; }
+.app-runtime-notice { padding: 9px 14px; display: flex; gap: 12px; align-items: center; background: var(--color-desk-panel); border-top: 1px solid var(--color-desk-line); font-size: 12px; color: var(--color-desk-dim); }
+.app-runtime-notice span { flex: 1; overflow-wrap: anywhere; }
+.app-access { padding: 28px; width: 100%; height: 100%; overflow: auto; display: flex; flex-direction: column; gap: 16px; background: var(--color-desk-panel); color: var(--color-desk-fg); }
+.app-access-heading { display: flex; align-items: center; gap: 14px; }
+.app-access h2 { font-size: 18px; font-weight: 550; margin: 0 0 4px; }
+.app-access p { font-size: 12px; color: var(--color-desk-dim); margin: 0; line-height: 1.6; }
+.app-access-list { margin: 0; padding: 0; list-style: none; border: 1px solid var(--color-desk-line); border-radius: 10px; }
+.app-access-list li { padding: 12px 14px; font-size: 12px; }
+.app-access-list li + li { border-top: 1px solid var(--color-desk-line); }
+.app-access-list strong { display: block; margin-bottom: 3px; font-weight: 550; }
+.app-access-source { overflow-wrap: anywhere; }
+.app-access-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: auto; padding-top: 8px; }
+.app-access-mark { width: 48px; height: 48px; border-radius: 12px; background: var(--color-desk-bg); border: 1px solid var(--color-desk-line); display: grid; place-content: center; flex-shrink: 0; }

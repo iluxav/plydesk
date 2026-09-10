@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "id": "vscode",
+  "name": "VS Code",
+  "description": "Work on remote projects in a full code editor.",
+  "icon": "lucide:code-xml",
+  "window": {
+    "w": 1180,
+    "h": 780
+  },
+  "requires": [
+    {
+      "kind": "archive",
+      "command": "openvscode-server",
+      "url": "https://github.com/gitpod-io/openvscode-server/releases/download/openvscode-server-v1.109.5/openvscode-server-v1.109.5-linux-${arch}.tar.gz",
+      "sha256": {
+        "aarch64": "36d9c14036489b63de84ebace837fcacf7e60e669a0dc715802c5443684ea4dc",
+        "x86_64": "b433bf4f0227321a7014d8460d10a8f958adc0f45aa79bd889e84e65e8f88363",
+        "armv7l": "f84ac0dcea0bdeac07e172e58903b38bc5ef0ac94b0bf2ab2ce4eca325ab98bb"
+      },
+      "arch_map": {
+        "aarch64": "arm64",
+        "x86_64": "x64",
+        "armv7l": "armhf"
+      },
+      "into": "openvscode-server",
+      "bin": "bin/openvscode-server"
+    }
+  ],
+  "version": "1.0.0",
+  "permissions": [
+    "remote.exec",
+    "remote.tunnels",
+    "desktop.embed"
+  ]
+}

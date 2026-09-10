@@ -39,8 +39,7 @@ pub enum Change {
 pub struct Source {
     name: String,
     dir: String,
-    source: String,
-    style: Option<String>,
+    manifest: crate::runtime::Manifest,
     stamp: String,
 }
 
@@ -81,6 +80,7 @@ fn app_directory(directory: &str) -> Result<PathBuf, String> {
     if !dir.join("index.js").is_file() {
         return Err("This folder needs an index.js entry file. For JSX or TypeScript, build your app first and select its output folder.".into());
     }
+    crate::runtime::manifest_at(&dir)?;
     Ok(dir)
 }
 
@@ -117,7 +117,7 @@ fn registered<'a>(config: &'a Config, directory: &str) -> Result<&'a LocalApp, S
 
 // Metadata polling avoids a persistent watcher per folder and ignores node_modules.
 fn stamp(dir: &Path) -> String {
-    ["index.js", "style.css"].iter().map(|name| match fs::metadata(dir.join(name)) {
+    ["manifest.json", "index.js", "style.css"].iter().map(|name| match fs::metadata(dir.join(name)) {
         Ok(m) => format!("{}:{}", m.len(), m.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map(|t| t.as_nanos()).unwrap_or(0)),
         Err(e) => format!("{:?}", e.kind()),
     }).collect::<Vec<_>>().join("|")
@@ -125,23 +125,11 @@ fn stamp(dir: &Path) -> String {
 
 fn read_source(directory: &str) -> Result<Source, String> {
     let dir = Path::new(directory);
-    let read = |name: &str| -> Result<String, String> {
-        let path = dir.join(name);
-        let metadata = fs::metadata(&path).map_err(|e| format!("Cannot read {name}: {e}"))?;
-        if !metadata.is_file() || metadata.len() > 16 * 1024 * 1024 {
-            return Err(format!("{name} must be a UTF-8 file smaller than 16 MB"));
-        }
-        fs::read_to_string(path).map_err(|e| format!("Cannot read {name}: {e}"))
-    };
     let before = stamp(dir);
-    let source = read("index.js")?;
-    let style = match fs::symlink_metadata(dir.join("style.css")) {
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-        _ => Some(read("style.css")?),
-    };
+    let manifest = crate::runtime::manifest_at(dir)?;
     let after = stamp(dir);
     if before != after { return Err("App files changed while loading. Wait for the build to finish, then reload.".into()); }
-    Ok(Source { name: dir.file_name().unwrap_or_default().to_string_lossy().into_owned(), dir: directory.into(), source, style, stamp: after })
+    Ok(Source { name: dir.file_name().unwrap_or_default().to_string_lossy().into_owned(), dir: directory.into(), manifest, stamp: after })
 }
 
 #[tauri::command]
@@ -171,8 +159,7 @@ pub fn developer_open_devtools(app: tauri::AppHandle, webview: tauri::Webview, s
             return Err("Enable developer mode to open DevTools".into());
         }
     }
-    // Local apps share the desktop webview. Inspect that view even if an
-    // embedded app (such as VS Code) was focused before opening Settings.
+    // The desktop inspector is separate from each running app inspector.
     webview.open_devtools();
     Ok(())
 }
@@ -203,6 +190,7 @@ mod tests {
         let plugin = root.join("my app");
         fs::create_dir_all(&plugin).unwrap();
         fs::write(plugin.join("index.js"), "export const manifest = {}").unwrap();
+        fs::write(plugin.join("manifest.json"), r#"{"schemaVersion":1,"id":"test-app","name":"Test","version":"1","permissions":[]}"#).unwrap();
         let mut config = Config::default();
         assert!(change_config(&mut config, Change::Add { directory: plugin.to_string_lossy().into() }).is_err());
         config.enabled = true;
@@ -235,4 +223,12 @@ mod tests {
         assert!(app_directory("relative/path").is_err());
         assert!(read_source("/nonexistent/sshdesk-test").is_err());
     }
+}
+
+pub fn mode_enabled(app: &tauri::AppHandle) -> Result<bool, String> {
+    Ok(read_config(&config_path(app)?)?.enabled)
+}
+pub fn enabled_directory(app: &tauri::AppHandle, directory: &str) -> Result<bool, String> {
+    let config = read_config(&config_path(app)?)?;
+    Ok(config.enabled && config.apps.iter().any(|a| a.enabled && a.directory == directory))
 }

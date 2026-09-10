@@ -1,0 +1,11 @@
+[[permission]]
+identifier = "app-runtime"
+description = "Runtime gateway; every request is checked against the native session and its grant."
+commands.allow = [
+  "runtime_bootstrap",
+  "runtime_event",
+  "runtime_call",
+  "runtime_embed",
+  "runtime_embed_close",
+  "runtime_embed_bounds"
+]

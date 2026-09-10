@@ -35,6 +35,8 @@ const RMDIR: u8 = 15;
 const REALPATH: u8 = 16;
 const STAT: u8 = 17;
 const RENAME: u8 = 18;
+const READLINK: u8 = 19;
+const SYMLINK: u8 = 20;
 const STATUS: u8 = 101;
 const HANDLE: u8 = 102;
 const DATA: u8 = 103;
@@ -460,17 +462,71 @@ impl Sftp {
         self.rmdir(path)
     }
 
+    pub fn readlink(&mut self, path: &str) -> Result<String> {
+        let (t, p) = self.call(READLINK, |b| { b.str(path); })?;
+        if t != NAME { return Self::check_status(t, &p).and(Err(Error::Io("sftp: readlink failed".into()))) }
+        let mut c = Cur::new(&p);
+        let _ = c.u32()?;
+        if c.u32()? == 0 { return Err(Error::Io("sftp: empty readlink".into())) }
+        c.string()
+    }
+
+    /// OpenSSH sends the two paths in the opposite order from the draft:
+    /// target first, then the link to create. Every server this talks to is
+    /// OpenSSH, so that is the order used.
+    pub fn symlink(&mut self, target: &str, link: &str) -> Result<()> {
+        self.expect_ok(SYMLINK, |b| { b.str(target).str(link); })
+    }
+
+    /// A directory that may already exist. A second drag of the same folder
+    /// lands on the first copy, and that is not an error.
+    fn ensure_dir(&mut self, path: &str) -> Result<()> {
+        match self.mkdir(path) {
+            Ok(()) => Ok(()),
+            Err(e) => if self.stat(path).map(|a| a.kind() == "dir").unwrap_or(false) { Ok(()) } else { Err(e) },
+        }
+    }
+
+    /// Copy `from` to `to` on the server.
+    ///
+    /// A folder is walked entry by entry using the types the listing already
+    /// reports, so a broken link is recreated as a link rather than followed
+    /// into "no such file". Sockets and pipes are skipped, an unreadable file
+    /// is skipped, and the report says what was left out — the whole copy no
+    /// longer fails on the first odd entry, which every real home has.
+    pub fn copy(&mut self, from: &str, to: &str) -> Result<TreeReport> {
+        let mut report = TreeReport::default();
+        let a = self.stat(from)?;
+        if a.kind() == "dir" { self.copy_dir(from, to, &mut report)?; }
+        else { self.copy_file(from, to)?; report.files += 1; report.bytes += a.size; }
+        Ok(report)
+    }
+
+    fn copy_dir(&mut self, from: &str, to: &str, report: &mut TreeReport) -> Result<()> {
+        self.ensure_dir(to)?;
+        report.dirs += 1;
+        for e in self.list(from)? {
+            let (src, dst) = (join(from, &e.name), join(to, &e.name));
+            let result = match e.kind.as_str() {
+                "dir" => self.copy_dir(&src, &dst, report),
+                "file" => self.copy_file(&src, &dst).map(|()| { report.files += 1; report.bytes += e.size; }),
+                "link" => self.copy_link(&src, &dst).map(|()| report.links += 1),
+                other => { report.skip(src, format!("not a regular file ({other})")); continue }
+            };
+            report.settle(src, result)?;
+        }
+        Ok(())
+    }
+
+    fn copy_link(&mut self, from: &str, to: &str) -> Result<()> {
+        let target = self.readlink(from)?;
+        if self.lstat(to).is_ok() { self.remove_file(to)?; }
+        self.symlink(&target, to)
+    }
+
     /// Server-side copy — the bytes never cross the network. Falls back to a
     /// read/write round trip when the extension is missing.
-    pub fn copy(&mut self, from: &str, to: &str) -> Result<()> {
-        let a = self.stat(from)?;
-        if a.kind() == "dir" {
-            self.mkdir(to)?;
-            for e in self.list(from)? {
-                self.copy(&join(from, &e.name), &join(to, &e.name))?;
-            }
-            return Ok(())
-        }
+    fn copy_file(&mut self, from: &str, to: &str) -> Result<()> {
         if self.has("copy-data") {
             let src = self.open_handle(from, F_READ)?;
             let dst = match self.open_handle(to, F_WRITE | F_CREAT | F_TRUNC) {
@@ -551,40 +607,77 @@ impl Sftp {
 
     /// Recursively copy a remote tree to the local machine.
     ///
-    /// SFTP has no bulk primitive, so this walks. Directories are created
-    /// locally as they are encountered; symlinks are followed as files, which
-    /// is what a drag to Finder should produce.
-    pub fn download_tree(&mut self, remote: &str, local: &std::path::Path) -> Result<u64> {
+    /// SFTP has no bulk primitive, so this walks. Links are followed when
+    /// they lead to a file, which is what a drag to Finder should produce; a
+    /// link to a folder is followed once, a broken one is skipped and
+    /// reported. Sockets and pipes are skipped.
+    pub fn download_tree(&mut self, remote: &str, local: &std::path::Path) -> Result<TreeReport> {
+        let mut report = TreeReport::default();
         let a = self.stat(remote)?;
-        if a.kind() != "dir" {
-            if let Some(parent) = local.parent() {
-                std::fs::create_dir_all(parent).map_err(|e| Error::Io(e.to_string()))?;
-            }
-            return self.download(remote, &local.to_string_lossy());
+        if a.kind() == "dir" { self.download_dir(remote, local, &mut report, 0)?; }
+        else {
+            if let Some(parent) = local.parent() { std::fs::create_dir_all(parent).map_err(local_err)?; }
+            report.bytes += self.download(remote, &local.to_string_lossy())?;
+            report.files += 1;
         }
-        std::fs::create_dir_all(local).map_err(|e| Error::Io(e.to_string()))?;
-        let mut total = 0;
-        for e in self.list(remote)? {
-            total += self.download_tree(&join(remote, &e.name), &local.join(&e.name))?;
-        }
-        Ok(total)
+        Ok(report)
     }
 
-    /// Recursively copy a local tree up to the remote.
-    pub fn upload_tree(&mut self, local: &std::path::Path, remote: &str) -> Result<u64> {
-        let meta = std::fs::metadata(local).map_err(|e| Error::Io(e.to_string()))?;
-        if !meta.is_dir() {
-            return self.upload(&local.to_string_lossy(), remote);
+    fn download_dir(&mut self, remote: &str, local: &std::path::Path, report: &mut TreeReport, via_link: u32) -> Result<()> {
+        std::fs::create_dir_all(local).map_err(local_err)?;
+        report.dirs += 1;
+        for e in self.list(remote)? {
+            let (src, dst) = (join(remote, &e.name), local.join(&e.name));
+            let result = match e.kind.as_str() {
+                "dir" => self.download_dir(&src, &dst, report, via_link),
+                "file" => self.download(&src, &dst.to_string_lossy()).map(|n| { report.files += 1; report.bytes += n; }),
+                "link" => match self.stat(&src) {
+                    Ok(a) if a.kind() == "file" => self.download(&src, &dst.to_string_lossy()).map(|n| { report.files += 1; report.bytes += n; }),
+                    // One level through a folder link is useful; deeper is a cycle waiting to happen.
+                    Ok(a) if a.kind() == "dir" && via_link == 0 => self.download_dir(&src, &dst, report, 1),
+                    Ok(_) => { report.skip(src, "link to a folder".into()); continue }
+                    Err(err) => Err(err),
+                },
+                other => { report.skip(src, format!("not a regular file ({other})")); continue }
+            };
+            report.settle(src, result)?;
         }
-        // Already-exists is fine; anything else is a real failure.
-        let _ = self.mkdir(remote);
-        let mut total = 0;
+        Ok(())
+    }
+
+    /// Recursively copy a local tree up to the remote. Links are recreated as
+    /// links, special files are skipped, and an existing folder is reused.
+    pub fn upload_tree(&mut self, local: &std::path::Path, remote: &str) -> Result<TreeReport> {
+        let mut report = TreeReport::default();
+        let meta = std::fs::metadata(local).map_err(|e| Error::Io(e.to_string()))?;
+        if meta.is_dir() { self.upload_dir(local, remote, &mut report)?; }
+        else { report.bytes += self.upload(&local.to_string_lossy(), remote)?; report.files += 1; }
+        Ok(report)
+    }
+
+    fn upload_dir(&mut self, local: &std::path::Path, remote: &str, report: &mut TreeReport) -> Result<()> {
+        self.ensure_dir(remote)?;
+        report.dirs += 1;
         for entry in std::fs::read_dir(local).map_err(|e| Error::Io(e.to_string()))? {
             let entry = entry.map_err(|e| Error::Io(e.to_string()))?;
             let name = entry.file_name().to_string_lossy().to_string();
-            total += self.upload_tree(&entry.path(), &join(remote, &name))?;
+            let (src, dst) = (entry.path(), join(remote, &name));
+            let kind = entry.file_type().map_err(local_err);
+            let result = match kind {
+                Ok(t) if t.is_dir() => self.upload_dir(&src, &dst, report),
+                Ok(t) if t.is_symlink() => std::fs::read_link(&src).map_err(local_err).and_then(|target| {
+                    if self.lstat(&dst).is_ok() { self.remove_file(&dst)?; }
+                    self.symlink(&target.to_string_lossy(), &dst)
+                }).map(|()| report.links += 1),
+                Ok(t) if t.is_file() => std::fs::read(&src).map_err(local_err)
+                    .and_then(|data| self.write(&dst, &data).map(|()| data.len() as u64))
+                    .map(|n| { report.files += 1; report.bytes += n; }),
+                Ok(_) => { report.skip(src.to_string_lossy().into_owned(), "not a regular file".into()); continue }
+                Err(err) => Err(err),
+            };
+            report.settle(src.to_string_lossy().into_owned(), result)?;
         }
-        Ok(total)
+        Ok(())
     }
 
     pub fn lstat(&mut self, path: &str) -> Result<Attrs> {
@@ -595,6 +688,35 @@ impl Sftp {
         Attrs::parse(&mut c)
     }
 }
+
+/// What a tree copy did, and what it could not do.
+#[derive(Debug, Default, Clone, Serialize)]
+pub struct TreeReport {
+    pub files: u64,
+    pub dirs: u64,
+    pub links: u64,
+    pub bytes: u64,
+    pub skipped: Vec<Skipped>,
+}
+#[derive(Debug, Clone, Serialize)]
+pub struct Skipped { pub path: String, pub reason: String }
+
+impl TreeReport {
+    fn skip(&mut self, path: String, reason: String) { self.skipped.push(Skipped { path, reason }); }
+    /// A server refusal for one entry is recorded and the walk goes on; a
+    /// broken connection is not one entry's problem and ends the walk.
+    fn settle<T>(&mut self, path: String, result: Result<T>) -> Result<()> {
+        match result {
+            Ok(_) => Ok(()),
+            Err(Error::Remote { stderr, .. }) => { self.skip(path, stderr); Ok(()) }
+            Err(other) => Err(other),
+        }
+    }
+}
+
+/// A local filesystem problem with one entry, shaped like a server refusal so
+/// the walk treats it the same way: skip and report, never abort.
+fn local_err(e: std::io::Error) -> Error { Error::Remote { code: 4, stderr: e.to_string() } }
 
 pub fn join(dir: &str, name: &str) -> String {
     if dir.ends_with('/') { format!("{dir}{name}") } else { format!("{dir}/{name}") }

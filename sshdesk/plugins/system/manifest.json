@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "system",
+  "name": "System",
+  "description": "Review memory, storage, and machine health.",
+  "icon": "desk:cpu",
+  "window": {
+    "w": 1000,
+    "h": 640
+  },
+  "version": "1.0.0",
+  "permissions": [
+    "remote.exec",
+    "remote.sudo"
+  ]
+}

@@ -732,7 +732,8 @@ pub fn mkdir(h: &mut Host, path: &str) -> Result<()> {
 }
 
 pub fn rename(h: &mut Host, from: &str, to: &str) -> Result<()> {
-    h.sftp()?.rename(from, to)
+    let (from, to) = (expand(h, from)?, expand(h, to)?);
+    h.sftp()?.rename(&from, &to)
 }
 
 pub fn remove(h: &mut Host, path: &str, recursive: bool) -> Result<()> {
@@ -742,8 +743,15 @@ pub fn remove(h: &mut Host, path: &str, recursive: bool) -> Result<()> {
 /// Server-side copy where the server supports `copy-data` — the bytes never
 /// cross the network, which `cp -a` over a shell could not achieve either
 /// without the same extension.
-pub fn copy(h: &mut Host, from: &str, to: &str) -> Result<()> {
-    h.sftp()?.copy(from, to)
+/// A destination may arrive as `~/…` from a sidebar shortcut. SFTP has no
+/// notion of `~`, so it is expanded here rather than in every caller.
+fn expand(h: &mut Host, path: &str) -> Result<String> {
+    if path == "~" || path.starts_with("~/") { resolve_path(h, path) } else { Ok(path.to_string()) }
+}
+
+pub fn copy(h: &mut Host, from: &str, to: &str) -> Result<sftp::TreeReport> {
+    let (from, to) = (expand(h, from)?, expand(h, to)?);
+    h.sftp()?.copy(&from, &to)
 }
 
 /// Free space, as numbers rather than a parsed `df -h` string.
@@ -871,6 +879,75 @@ pub fn server_time(h: &mut Host) -> Result<ServerTime> {
     let hh: i32 = z[1..3].parse().unwrap_or(0);
     let mm: i32 = z[3..5].parse().unwrap_or(0);
     Ok(ServerTime { epoch, offset_minutes: sign * (hh * 60 + mm), zone: parts[2].to_string() })
+}
+
+#[cfg(test)]
+mod live_tests {
+    use super::*;
+
+    /// SSHDESK_TEST_HOST=user@host cargo test --manifest-path core/Cargo.toml live_ -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn live_folder_copy_download_and_upload() {
+        let target = std::env::var("SSHDESK_TEST_HOST").expect("SSHDESK_TEST_HOST=user@host");
+        let mut h = Host::connect(&target).unwrap();
+        let base = format!("/tmp/sshdesk-test-{}", std::process::id());
+        let src = format!("{base}/src");
+        mkdir(&mut h, &base).unwrap();
+        mkdir(&mut h, &src).unwrap();
+        mkdir(&mut h, &format!("{src}/nested")).unwrap();
+        write_file(&mut h, &format!("{src}/a.txt"), "alpha").unwrap();
+        write_file(&mut h, &format!("{src}/nested/b.txt"), "beta").unwrap();
+
+        let local = std::env::temp_dir().join(format!("sshdesk-test-{}", std::process::id()));
+        let stamp = format!("sshdesk-test-{}", std::process::id());
+        let home = resolve_path(&mut h, "~").unwrap();
+        let home_copy = format!("~/{stamp}");
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let kinds = |h: &mut Host, dir: &str| list_dir(h, dir).unwrap().iter().map(|e| format!("{}:{}", e.name, e.kind)).collect::<Vec<_>>();
+
+            let plain = copy(&mut h, &src, &format!("{base}/copy1")).unwrap();
+            assert_eq!((plain.files, plain.dirs, plain.skipped.len()), (2, 2, 0));
+            assert_eq!(read_file(&mut h, &format!("{base}/copy1/nested/b.txt"), 100).unwrap().text, "beta");
+            // A second drag of the same folder lands on an existing destination.
+            let again = copy(&mut h, &src, &format!("{base}/copy1")).unwrap();
+            assert_eq!((again.files, again.skipped.len()), (2, 0));
+
+            // What a real home has and a single file never does.
+            assert_eq!(h.run(&format!("ln -s /nonexistent '{src}/broken' && mkfifo '{src}/pipe' && ln -s nested '{src}/nested-link'")).unwrap().code, 0);
+            let odd = copy(&mut h, &src, &format!("{base}/copy2")).unwrap();
+            assert_eq!((odd.files, odd.links, odd.skipped.len()), (2, 2, 1), "{odd:?}");
+            assert!(odd.skipped[0].path.ends_with("/pipe"), "{odd:?}");
+            let listed = kinds(&mut h, &format!("{base}/copy2"));
+            assert!(listed.contains(&"broken:link".into()) && listed.contains(&"nested-link:link".into()) && !listed.iter().any(|e| e.starts_with("pipe")), "{listed:?}");
+
+            let down = h.sftp().unwrap().download_tree(&src, &local.join("src")).unwrap();
+            assert_eq!((down.files, down.skipped.len()), (3, 2), "{down:?}"); // b.txt twice via the folder link; the FIFO and the broken link skipped
+            assert!(local.join("src/nested-link/b.txt").is_file(), "a link to a folder is followed for the Mac");
+            assert!(!local.join("src/pipe").exists());
+
+            std::fs::create_dir_all(local.join("up/inner")).unwrap();
+            std::fs::write(local.join("up/inner/c.txt"), "gamma").unwrap();
+            std::os::unix::fs::symlink("/nonexistent", local.join("up/broken")).unwrap();
+            let up = h.sftp().unwrap().upload_tree(&local.join("up"), &format!("{base}/up")).unwrap();
+            assert_eq!((up.files, up.links, up.skipped.len()), (1, 1, 0), "{up:?}");
+            assert_eq!(read_file(&mut h, &format!("{base}/up/inner/c.txt"), 100).unwrap().text, "gamma");
+            assert!(kinds(&mut h, &format!("{base}/up")).contains(&"broken:link".into()));
+
+            // A drop on the sidebar's Home shortcut arrives as `~/name`. The
+            // move stays inside home: a plain rename cannot cross filesystems.
+            let via_tilde = copy(&mut h, &format!("{base}/copy1"), &home_copy).unwrap();
+            assert_eq!(via_tilde.files, 2, "{via_tilde:?}");
+            assert_eq!(read_file(&mut h, &format!("{home}/{stamp}/a.txt"), 100).unwrap().text, "alpha");
+            rename(&mut h, &home_copy, &format!("{home_copy}-moved")).unwrap();
+            assert_eq!(read_file(&mut h, &format!("{home}/{stamp}-moved/a.txt"), 100).unwrap().text, "alpha");
+        }));
+        let _ = remove(&mut h, &base, true);
+        let _ = remove(&mut h, &format!("{home}/{stamp}"), true);
+        let _ = remove(&mut h, &format!("{home}/{stamp}-moved"), true);
+        let _ = std::fs::remove_dir_all(&local);
+        if let Err(panic) = outcome { std::panic::resume_unwind(panic) }
+    }
 }
 
 #[cfg(test)]

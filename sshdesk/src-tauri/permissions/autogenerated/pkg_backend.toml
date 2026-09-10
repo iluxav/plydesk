@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pkg-backend"
+description = "Enables the pkg_backend command without any pre-configured scope."
+commands.allow = ["pkg_backend"]
+
+[[permission]]
+identifier = "deny-pkg-backend"
+description = "Denies the pkg_backend command without any pre-configured scope."
+commands.deny = ["pkg_backend"]

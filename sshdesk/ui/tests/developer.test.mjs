@@ -4,16 +4,15 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { stripTypeScriptTypes } from 'node:module'
-import { resolveObjectURL } from 'node:buffer'
 import vm from 'node:vm'
 
 const source = await readFile(new URL('../src/ext/loader.ts', import.meta.url), 'utf8')
-const bundle = (id, text = id, extra = '') => `export const manifest = { id: '${id}', name: '${text}' }; export function createApp() { ${extra} return function App() {} }`
+const manifest = (id, name = id) => ({ schemaVersion: 1, id, name, version: '1.0.0', permissions: [] })
 async function harness() {
   const apps = [{ id: 'settings', title: 'Settings', component() {} }]
   const styles = [], tokens = new Map(), files = new Map(), ticks = new Set(), removed = []
   let config = { enabled: false, apps: [] }
-  const shipped = [{ dir: '/shipped/system', name: 'system', source: bundle('system', 'Shipped System'), style: '.system {color: blue}' }]
+  const shipped = [{ dir: '/shipped/system', name: 'system', manifest: manifest('system', 'Shipped System'), source: 'throw new Error("Must never execute in desktop")', style: '.system {color: blue}' }]
   const context = vm.createContext({ Blob, URL, console: { error() {}, warn() {} }, Date, Map, Set,
     setInterval: fn => { ticks.add(fn); return fn }, clearInterval: fn => ticks.delete(fn),
     document: { querySelector: () => null, querySelectorAll: () => styles.slice(),
@@ -44,6 +43,7 @@ async function harness() {
     for (const [name, value] of Object.entries(values)) this.setExport(name, value)
   }, { context })
   const modules = {
+    './PluginView': mock({ PluginView() {} }),
     react: mock({ createElement() {} }), htm: mock({ default: { bind: () => () => {} } }),
     '../fw': mock({ fw: {} }),
     '../fw/tokens': mock({ declareTokens: (id, value) => tokens.set(id, value), removeTokenDeclarations: id => tokens.delete(id) }),
@@ -54,12 +54,7 @@ async function harness() {
   }
   const loader = new vm.SourceTextModule(stripTypeScriptTypes(source), {
     context, identifier: 'loader',
-    importModuleDynamically: async specifier => {
-      const blob = resolveObjectURL(specifier)
-      const mod = new vm.SourceTextModule(await blob.text(), { context })
-      await mod.link(() => { throw new Error('Unbundled import') })
-      await mod.evaluate()
-      return mod
+    importModuleDynamically: async () => { throw new Error('The desktop must not execute app code')
     },
   })
   await loader.link(name => modules[name])
@@ -68,13 +63,13 @@ async function harness() {
   api.onPluginsChanged(ids => removed.push(...ids))
   await api.loadPlugins()
   return { api, apps, styles, tokens, files, ticks, removed,
-    setFile(dir, id, text, style = '', extra = '') { files.set(dir, { source: bundle(id, text, extra), style, stamp: String(Math.random()) }) },
+    setFile(dir, id, text, style = '', extra = '') { files.set(dir, { manifest: manifest(id, text), source: extra || 'throw new Error("Never execute")', style, stamp: String(Math.random()) }) },
     async add(dir) { await api.changeDeveloperApps({ op: 'mode', enabled: true }); await api.changeDeveloperApps({ op: 'add', directory: dir }) },
     async tick() { for (const tick of ticks) tick(); await new Promise(resolve => setImmediate(resolve)); await new Promise(resolve => setImmediate(resolve)) },
   }
 }
 
-test('targeted reload replaces only its app and CSS, without retiring windows', async () => {
+test('catalog reload updates metadata without executing JS, injecting CSS, or retiring windows', async () => {
   const h = await harness()
   const shipped = h.apps.find(a => a.id === 'system')
   h.setFile('/local/one', 'one', 'First', '.one {color: red}')
@@ -82,24 +77,24 @@ test('targeted reload replaces only its app and CSS, without retiring windows', 
   const old = h.apps.find(a => a.id === 'one')
   h.setFile('/local/one', 'one', 'Updated', '.one {color: green}')
   await h.api.reloadLocalApp('/local/one')
-  assert.notEqual(h.apps.find(a => a.id === 'one').component, old.component)
+  assert.equal(h.apps.find(a => a.id === 'one').component, old.component)
+  assert.notEqual(h.apps.find(a => a.id === 'one').plugin.revision, old.plugin.revision)
   assert.equal(h.apps.find(a => a.id === 'one').title, 'Updated')
   assert.equal(h.apps.find(a => a.id === 'system'), shipped)
-  assert.equal(h.styles.filter(s => s.dataset.plugin === 'one').length, 1)
-  assert.equal(h.styles.find(s => s.dataset.plugin === 'one').textContent, '.one {color: green}')
+  assert.equal(h.styles.length, 0)
   assert.deepEqual(h.removed, [])
 })
 
-test('invalid builds retain the previous definition, styles, and recover on reload', async () => {
+test('invalid manifests retain the previous definition and recover on reload', async () => {
   const h = await harness()
   h.setFile('/local/one', 'one', 'First', '.one {}')
   await h.add('/local/one')
   const first = h.apps.find(a => a.id === 'one')
-  h.files.set('/local/one', { source: 'export broken !!', style: '.bad {}', stamp: 'bad' })
+  h.files.set('/local/one', { manifest: null, error: 'Invalid manifest.json', source: 'export broken !!', style: '.bad {}', stamp: 'bad' })
   await h.api.reloadLocalApp('/local/one')
   assert.equal(h.apps.find(a => a.id === 'one'), first)
-  assert.equal(h.styles.find(s => s.dataset.plugin === 'one').textContent, '.one {}')
-  assert.match(h.api.developerSnapshot().runtime['/local/one'].error, /SyntaxError/)
+  assert.equal(h.styles.length, 0)
+  assert.match(h.api.developerSnapshot().runtime['/local/one'].error, /manifest.json/)
   h.setFile('/local/one', 'one', 'Fixed')
   await h.api.reloadLocalApp('/local/one')
   assert.equal(h.apps.find(a => a.id === 'one').title, 'Fixed')
@@ -164,9 +159,9 @@ test('watch waits for stable output and developer mode stops all local reloads',
 
 test('malformed appearance declarations never reach the desktop token registry', async () => {
   const h = await harness()
-  h.files.set('/local/bad', { source: "export const manifest = { id: 'bad', name: 'Bad', tokens: { accent: null } }; export function createApp() { return function() {} }", stamp: 'bad' })
+  h.files.set('/local/bad', { manifest: { ...manifest('bad','Bad'), tokens: { accent: null } }, stamp: 'bad' })
   await h.add('/local/bad')
-  assert.match(h.api.developerSnapshot().runtime['/local/bad'].error, /Invalid appearance token/)
+  assert.match(h.api.developerSnapshot().runtime['/local/bad'].error, /Invalid token/)
   assert.equal(h.tokens.has('bad'), false)
   h.setFile('/local/desk', 'desk', 'Desktop override')
   await h.add('/local/desk')

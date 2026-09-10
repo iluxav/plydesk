@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-runtime-event"
+description = "Enables the runtime_event command without any pre-configured scope."
+commands.allow = ["runtime_event"]
+
+[[permission]]
+identifier = "deny-runtime-event"
+description = "Denies the runtime_event command without any pre-configured scope."
+commands.deny = ["runtime_event"]

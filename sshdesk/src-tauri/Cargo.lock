@@ -3049,11 +3049,13 @@ dependencies = [
  "portable-pty",
  "serde",
  "serde_json",
+ "sha2",
  "sshdesk-core",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
  "tauri-plugin-drag",
+ "uuid",
 ]
 
 [[package]]

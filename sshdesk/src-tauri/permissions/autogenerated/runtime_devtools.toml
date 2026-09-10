@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-runtime-devtools"
+description = "Enables the runtime_devtools command without any pre-configured scope."
+commands.allow = ["runtime_devtools"]
+
+[[permission]]
+identifier = "deny-runtime-devtools"
+description = "Denies the runtime_devtools command without any pre-configured scope."
+commands.deny = ["runtime_devtools"]

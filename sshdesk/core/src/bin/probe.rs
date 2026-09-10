@@ -176,7 +176,7 @@ fn probe_sftp(h: &mut Host) -> Option<String> {
 
     let f2 = format!("{dir}/b.txt");
     match copy(h, &f1, &f2) {
-        Ok(()) => match read_file(h, &f2, 1 << 20) {
+        Ok(_) => match read_file(h, &f2, 1 << 20) {
             Ok(r) if r.text == body => ok!("server-side copy verified by content"),
             _ => bad!("copy produced wrong content"),
         },
@@ -239,7 +239,7 @@ fn probe_trees(h: &mut Host) {
     let _ = std::fs::remove_dir_all(&local);
 
     match h.sftp().and_then(|s| s.download_tree(&remote, &local)) {
-        Ok(n) => ok!("download_tree pulled {n} bytes"),
+        Ok(r) => ok!("download_tree pulled {} bytes, {} skipped", r.bytes, r.skipped.len()),
         Err(e) => { bad!("download_tree: {e}"); return }
     }
     let want = "deep \u{2014} \u{fc}n\u{ef}c\u{f6}d\u{e9}\n";
@@ -252,7 +252,7 @@ fn probe_trees(h: &mut Host) {
     let back = format!("{home}/.sshdesk-tree-back");
     let _ = remove(h, &back, true);
     match h.sftp().and_then(|s| s.upload_tree(&local, &back)) {
-        Ok(n) => ok!("upload_tree pushed {n} bytes"),
+        Ok(r) => ok!("upload_tree pushed {} bytes, {} skipped", r.bytes, r.skipped.len()),
         Err(e) => { bad!("upload_tree: {e}"); return }
     }
     match read_file(h, &format!("{back}/sub/deep.txt"), 1 << 20) {

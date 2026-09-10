@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-deps-install"
+description = "Enables the deps_install command without any pre-configured scope."
+commands.allow = ["deps_install"]
+
+[[permission]]
+identifier = "deny-deps-install"
+description = "Denies the deps_install command without any pre-configured scope."
+commands.deny = ["deps_install"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-forward-socket"
+description = "Enables the forward_socket command without any pre-configured scope."
+commands.allow = ["forward_socket"]
+
+[[permission]]
+identifier = "deny-forward-socket"
+description = "Denies the forward_socket command without any pre-configured scope."
+commands.deny = ["forward_socket"]

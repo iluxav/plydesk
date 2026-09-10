@@ -38,6 +38,7 @@ are saved on this Mac and apply across connected machines, including embedded VS
 
 | Action | Default shortcut |
 | --- | --- |
+| Search apps and files | Option-Space |
 | Snap left / right | Option-Command-Left / Right |
 | Maximize / restore | Option-Command-Up / Down |
 | Next / previous window | Command-backtick / Shift-Command-backtick |
@@ -55,7 +56,20 @@ desktop shortcuts use an app-local monitor and do not require Accessibility acce
 Command-Q and Command-Option-Escape remain available. No keystrokes are logged.
 
 Run the keyboard and window-layout checks with Node 24:
-`node --test ui/tests/keyboard.test.mjs`.
+`node --test ui/tests/keyboard.test.mjs`, or everything with `make test`.
+
+## Apps are isolated
+
+Extension apps (Ports, Services, System, VS Code, and anything under
+`~/.sshdesk/plugins` or a Developer-mode folder) do not run in the desktop
+page. Each window gets its own native webview on a private origin, and the
+only thing it can reach is a Rust gateway that checks every request against
+the app's `manifest.json` permissions and the machine the window was opened
+on. The first time an app opens on a machine, sshdesk lists what it asks for
+and waits for your approval before running its code; approvals are per app
+and per machine, and can be revoked in **Settings → Apps & Extensions**.
+[plugins/README.md](plugins/README.md) has the permission list and the
+security model.
 
 ## The three decisions that matter
 

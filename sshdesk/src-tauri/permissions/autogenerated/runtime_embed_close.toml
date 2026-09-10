@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-runtime-embed-close"
+description = "Enables the runtime_embed_close command without any pre-configured scope."
+commands.allow = ["runtime_embed_close"]
+
+[[permission]]
+identifier = "deny-runtime-embed-close"
+description = "Denies the runtime_embed_close command without any pre-configured scope."
+commands.deny = ["runtime_embed_close"]

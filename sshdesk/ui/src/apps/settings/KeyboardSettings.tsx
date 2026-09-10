@@ -43,8 +43,9 @@ export function KeyboardSettings() {
       <strong>Your desktop, from the keyboard</strong>
       <p>Arrange windows and move between apps without reaching for the mouse. Shortcuts apply to every connected machine on this Mac.</p>
     </div></div>
-    {['Arrange windows', 'Switch windows'].map(group => <SettingsGroup key={group} title={group}
-      description={group === 'Switch windows' ? 'Hold the modifier and press the switch key again to browse. Release to select; Escape cancels.' : 'Snapped windows stay above the dock. Restore returns to their previous size and position.'}>
+    {['Search', 'Arrange windows', 'Switch windows'].map(group => <SettingsGroup key={group} title={group}
+      description={group === 'Search' ? 'Open the search bar over the focused machine to launch an app or find a file by name.'
+        : group === 'Switch windows' ? 'Hold the modifier and press the switch key again to browse. Release to select; Escape cancels.' : 'Snapped windows stay above the dock. Restore returns to their previous size and position.'}>
       {ACTIONS.filter(action => action.group === group).map(action => <SettingsRow key={action.id} label={action.label}>
         <button className="settings-value-button shortcut-button" aria-label={`Change shortcut for ${action.label.toLowerCase()}`}
           onClick={() => { setEditing(action.id); setMessage(''); setError('') }}><kbd className="shortcut-key">{formatShortcut(preferences.bindings[action.id])}</kbd></button>

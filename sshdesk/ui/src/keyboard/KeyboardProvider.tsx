@@ -28,8 +28,8 @@ export function useKeyboard() {
   return value
 }
 
-export function KeyboardProvider({ active, onSwitchHost, disabled, children }: {
-  active: string; onSwitchHost: (host: string) => void; disabled: boolean; children: ReactNode
+export function KeyboardProvider({ active, onSwitchHost, onLauncher, disabled, children }: {
+  active: string; onSwitchHost: (host: string) => void; onLauncher?: () => void; disabled: boolean; children: ReactNode
 }) {
   const { state, dispatch } = useWM()
   const preferences = useKeyboardPreferences()
@@ -101,6 +101,7 @@ export function KeyboardProvider({ active, onSwitchHost, disabled, children }: {
       return
     }
     if (event.repeat) return
+    if (event.action === 'launcher') { finish(false); onLauncher?.(); return }
     const front = [...current.state.wins].filter(w => w.host === current.active && !w.minimized).sort((a, b) => b.z - a.z)[0]
     if (!front) return
     if (event.action === 'minimize') { dispatch({ t: 'minimize', id: front.id }); return }
@@ -108,7 +109,7 @@ export function KeyboardProvider({ active, onSwitchHost, disabled, children }: {
     const layout = layouts[event.action]
     const pane = document.querySelector<HTMLElement>(`[data-window-id="${CSS.escape(front.id)}"]`)?.parentElement
     if (layout && pane) dispatch({ t: 'layout', id: front.id, layout, ...workArea(pane) })
-  }, [dispatch, finish, updateSwitcher])
+  }, [dispatch, finish, updateSwitcher, onLauncher])
 
   useEffect(() => {
     const check = () => setBlocked(!!document.querySelector('[aria-modal="true"]:not(:has([data-shortcut-recorder])), [role="menu"], .desk-dragging, .desk-resizing'))

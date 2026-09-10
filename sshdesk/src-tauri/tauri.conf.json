@@ -47,6 +47,7 @@
     },
     "resources": [
       "../plugins/*/index.js",
+      "../plugins/*/manifest.json",
       "../plugins/*/style.css"
     ]
   }

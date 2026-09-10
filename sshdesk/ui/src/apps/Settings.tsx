@@ -1,3 +1,4 @@
+import { AppAccess } from './settings/RuntimeSettings'
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useFw } from '../wm/host'
 import { useWM } from '../wm/store'
@@ -261,7 +262,7 @@ export function Settings({ setTitle }: { setTitle?: (title: string) => void }) {
               {list.map(app => <button key={app.id} className="settings-app-row" onClick={() => navigate(`app:${app.id}`)}>
                 <AppIcon app={app} host={host} /><span><strong>{app.title}</strong><small>{app.description || BUILTIN_DESCRIPTIONS[app.id] || 'JavaScript extension'}</small></span>
                 <Icon id="lucide:chevron-right" size={14} /></button>)}
-              {!list.length && <p className="settings-empty">No extensions are loaded.</p>}
+              {!list.length && <p className="settings-empty">No extensions are registered.</p>}
             </SettingsGroup>
           })}
           {pluginFailures().length > 0 && <SettingsGroup title="Couldn’t load">
@@ -270,12 +271,13 @@ export function Settings({ setTitle }: { setTitle?: (title: string) => void }) {
             </div>)}
           </SettingsGroup>}
           <button className="settings-link-row" onClick={() => navigate('developer')}><Icon id="lucide:puzzle" size={17} /><span>Develop a local app</span><Icon id="lucide:chevron-right" size={14} /></button>
-          <p className="settings-footnote">Extension apps join the desktop and provide their own settings here.</p>
+          <p className="settings-footnote">Installed apps start only when opened. Each app window has its own runtime and saved access approvals.</p>
         </> : activeApp ? <>
           <div className="settings-app-heading"><AppIcon app={activeApp} host={host} large /><div><h2>{activeApp.title}</h2>
             <span className="settings-app-kind">{activeApp.plugin ? 'JavaScript extension' : 'Built-in app'}</span>
             <p>{activeApp.description || BUILTIN_DESCRIPTIONS[activeApp.id] || 'An app for your sshdesk workspace.'}</p></div>
             {!activeApp.hidden && <button className="settings-button" onClick={() => fw.ui.open(activeApp.id, { host })}>Open app<Icon id="lucide:arrow-up-right" size={13} /></button>}</div>
+          {activeApp.plugin && <AppAccess app={activeApp} />}
           <SettingsGroup title="Appearance">
             {Object.entries(appTokens).map(([name, decl]) => tokenRow(`${activeApp.id}.${name}`, decl))}
             {!Object.keys(appTokens).length && <p className="settings-empty">This app has no appearance settings.</p>}

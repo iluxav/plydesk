@@ -17,7 +17,9 @@ import { fw } from '../fw'
 import { useDialog } from '../wm/Dialog'
 import { setPasswordPrompt, resetSdk } from '../ext/sdk'
 import { reloadPlugins, onPluginsChanged, reportPluginError } from '../ext/loader'
+import { RuntimeBridge } from '../ext/RuntimeBridge'
 import { KeyboardProvider } from '../keyboard/KeyboardProvider'
+import { Launcher } from './Launcher'
 
 export function Desktop() {
   const { state, dispatch } = useWM()
@@ -38,6 +40,9 @@ export function Desktop() {
    */
   const [active, setActive] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
+  const [launcher, setLauncher] = useState(false)
+  const openLauncher = useCallback(() => setLauncher(true), [])
+  const closeLauncher = useCallback(() => setLauncher(false), [])
   const dlg = useDialog()
   const [, bumpPlugins] = useState(0)
 
@@ -148,6 +153,24 @@ export function Desktop() {
     setHosts(h => (h.includes(target) ? h : [...h, target]))
     setActive(target)
     setAdding(false)
+    // The launcher's file index: walked now, while the desktop is still empty.
+    void fw.for(target).search.build().catch(() => {})
+  }, [])
+
+  // Keep the index roughly current: shortly after Files changes something,
+  // and on a slow clock for changes made elsewhere.
+  useEffect(() => {
+    const timers = new Map<string, ReturnType<typeof setTimeout>>()
+    const rebuild = (host: string) => {
+      clearTimeout(timers.get(host))
+      timers.set(host, setTimeout(() => { void fw.for(host).search.build().catch(() => {}) }, 3000))
+    }
+    const stop = fw.bus.on('fs:changed', (p: { host?: string } | undefined) => {
+      const host = p?.host ?? activeRef.current
+      if (host) rebuild(host)
+    })
+    const interval = setInterval(() => hostsRef.current.forEach(rebuild), 10 * 60 * 1000)
+    return () => { stop(); clearInterval(interval); timers.forEach(t => clearTimeout(t)) }
   }, [])
 
   /** Disconnect one machine: its windows go with it, the others stay. */
@@ -174,7 +197,7 @@ export function Desktop() {
   }
 
   return (
-    <KeyboardProvider active={active} onSwitchHost={setActive} disabled={adding}><div className="desktop-shell">
+    <KeyboardProvider active={active} onSwitchHost={setActive} onLauncher={openLauncher} disabled={adding}><div className="desktop-shell"><RuntimeBridge />
       <div className="absolute inset-0" inert={adding}>
       <MenuBar
         hosts={hosts}
@@ -183,6 +206,7 @@ export function Desktop() {
         onAdd={() => setAdding(true)}
         onDisconnect={disconnect}
         onReloadPlugins={reload}
+        onSearch={openLauncher}
       />
 
       {/* One column per machine. Windows are absolutely positioned inside their
@@ -238,6 +262,7 @@ export function Desktop() {
 
       <Dock host={active} />
       </div>
+      <Launcher host={active} open={launcher && !adding} onClose={closeLauncher} />
       {adding && <div className="connection-overlay">
         <Connections connected={hosts} onConnected={connected} onCancel={() => setAdding(false)} />
       </div>}
@@ -254,11 +279,12 @@ function DesktopWindow({ win }: { win: Win }) {
   const Component = app.component
   return <Window win={win}>
     <HostScope host={win.host}>
-      <AppBoundary key={app.plugin?.revision ?? app.id} name={app.title}
+      <AppBoundary key={app.id} name={app.title}
         onError={app.plugin?.developer ? message => reportPluginError(app.plugin!.directory, message) : undefined}>
-        <Requires requires={app.requires} name={app.title}>
-          <Component {...(win.props ?? {})} winId={win.id} host={win.host} setTitle={setTitle} />
-        </Requires>
+        {app.plugin ? <Component app={app} appProps={win.props ?? {}} winId={win.id} host={win.host} setTitle={setTitle} /> :
+          <Requires requires={app.requires} name={app.title}>
+            <Component {...(win.props ?? {})} winId={win.id} host={win.host} setTitle={setTitle} />
+          </Requires>}
       </AppBoundary>
     </HostScope>
   </Window>

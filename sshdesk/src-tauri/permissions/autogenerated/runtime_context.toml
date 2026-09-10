@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-runtime-context"
+description = "Enables the runtime_context command without any pre-configured scope."
+commands.allow = ["runtime_context"]
+
+[[permission]]
+identifier = "deny-runtime-context"
+description = "Denies the runtime_context command without any pre-configured scope."
+commands.deny = ["runtime_context"]

@@ -1,3 +1,4 @@
+import { invoke } from '../ext/invoke'
 import type { DirListing, FileRead, SavedConn, ServerTime, Snapshot } from './types'
 export * from './types'
 
@@ -25,8 +26,6 @@ export * from './tokens'
 export { loadIconPacks, iconPacks, hasIcon, searchIcons, iconCount, ensureSymbol } from './icons'
 export { applyTheme } from './theme'
 
-const invoke = <T,>(cmd: string, args?: Record<string, unknown>): Promise<T> =>
-  (window as any).__TAURI__.core.invoke(cmd, args)
 
 /** Current host every fs/sys call is issued against. */
 let host = ''
@@ -39,6 +38,11 @@ const DRAG_ICON = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAAC
 
 /** Typed filesystem totals from `statvfs@openssh.com`. */
 export interface DiskInfo { total: number; free: number; avail: number }
+/** What a folder copy did, and which entries it had to leave out. */
+export interface TreeReport { files: number; dirs: number; links: number; bytes: number; skipped: { path: string; reason: string }[] }
+/** The launcher's name index of a machine's home directory. */
+export interface IndexStatus { building: boolean; count: number; truncated: boolean; error: string | null; ageSecs: number | null }
+export interface SearchHit { path: string; name: string; dir: boolean }
 
 export interface Clipboard { op: 'copy' | 'cut'; paths: string[]; host: string }
 let clipboard: Clipboard | null = null
@@ -79,9 +83,9 @@ export const getHost = () => host
 /**
  * The framework surface available to every app.
  *
- * Access control is deliberately NOT enforced here. The remote machine decides
- * what the user may do; a denied operation comes back as a thrown error whose
- * message is the actual stderr from Linux. Apps show that message.
+ * App views send requests through the native runtime gateway, which enforces
+ * the calling app’s grants and pinned host. Remote account permissions still
+ * apply after the platform check.
  *
  * What *is* enforced below the line: `fs` and `dbus` never touch a shell at
  * all — SFTP carries paths as byte strings and D-Bus carries typed arguments,
@@ -108,7 +112,8 @@ function makeApi(getHost: () => string) {
     write:    (path: string, content: string) => invoke<void>('write_text', { ...t(), path, content }),
     mkdir:    (path: string) => invoke<void>('make_dir', { ...t(), path }),
     rename:   (from: string, to: string) => invoke<void>('rename_path', { ...t(), from, to }),
-    copy:     (from: string, to: string) => invoke<void>('copy_path', { ...t(), from, to }),
+    /** Files and folders alike. A folder copy reports what it skipped rather than failing. */
+    copy:     (from: string, to: string) => invoke<TreeReport>('copy_path', { ...t(), from, to }),
     remove:   (path: string, recursive = false) => invoke<void>('remove_path', { ...t(), path, recursive }),
     download: (path: string, name: string) => invoke<string>('download_file', { ...t(), path, name }),
     upload:   (local: string, remote: string) => invoke<string>('upload_file', { ...t(), local, remote }),
@@ -277,6 +282,17 @@ function makeApi(getHost: () => string) {
       await bridgeBackendEvents()
       return invoke<boolean>('watch_units', t())
     },
+  },
+
+  /**
+   * File names under the home directory, walked once per connection and
+   * matched on this Mac. `build` is safe to call repeatedly: a walk already
+   * in progress is reported, not duplicated.
+   */
+  search: {
+    build:  () => invoke<IndexStatus>('index_build', t()),
+    status: () => invoke<IndexStatus>('index_status', t()),
+    query:  (query: string, limit = 12) => invoke<SearchHit[]>('index_search', { ...t(), query, limit }),
   },
 
   /**

@@ -7,6 +7,7 @@ import { useDialog } from '../../wm/Dialog'
 import { Icon } from '../../wm/Icon'
 import { SettingsGroup, SettingsModal, SettingsRow } from './SettingControls'
 import './developer.css'
+import { RunningApps } from './RuntimeSettings'
 
 export function DeveloperSettings() {
   const snapshot = useSyncExternalStore(onDeveloperChanged, developerSnapshot)
@@ -68,12 +69,13 @@ export function DeveloperSettings() {
             await change({ op: 'mode', enabled: !config.enabled })
           }}><span /></button>
       </SettingsRow>
-      <SettingsRow label="Developer tools" description="Inspect elements, console output, and JavaScript for the desktop and local apps.">
+      <SettingsRow label="Developer tools" description="Inspect the SSHDesk desktop. Each running app has its own inspector below.">
         <button className="settings-button" disabled={!ready || !config.enabled || busy || openingTools}
           onClick={() => void openDevTools()}><Icon id="lucide:bug" size={14} />{openingTools ? 'Opening…' : 'Open DevTools'}</button>
       </SettingsRow>
     </SettingsGroup>
-    <p className="settings-footnote">Local apps run inside sshdesk and can use your connected machines. Only load code you trust.</p>
+    <RunningApps developer={config.enabled} />
+    <p className="settings-footnote">Local apps run in separate views and request access before they start. Code edits reuse approval until the app manifest changes.</p>
     {(error || snapshot.error) && <div className="settings-inline-error" role="alert">{error || snapshot.error}</div>}
     {!ready ? <div className="settings-loading" role="status"><span className="ui-spinner" />Loading developer settings…</div> : <>
       <div className="developer-toolbar"><div><h3>Local apps <span>{config.apps.length}</span></h3>
@@ -84,7 +86,7 @@ export function DeveloperSettings() {
       {config.apps.length === 0 ? <div className="developer-empty">
         <span className="developer-empty-icon"><Icon id="lucide:code-xml" size={26} /></span>
         <strong>Your next app starts here</strong>
-        <p>Choose a folder containing <code>index.js</code> and an optional <code>style.css</code>. Your app will join the desktop and dock.</p>
+        <p>Choose a folder containing <code>manifest.json</code>, <code>index.js</code>, and an optional <code>style.css</code>. Your app will join the desktop and dock.</p>
         <span>No sshdesk rebuild needed.</span>
       </div> : <div className="developer-app-list">
         {config.apps.map(entry => {
@@ -93,7 +95,7 @@ export function DeveloperSettings() {
           const active = config.enabled && entry.enabled
           const loaded = !!current?.appId
           const effective = APPS.find(a => a.plugin?.directory === entry.directory && a.plugin.developer)
-          const status = !config.enabled ? 'Developer mode off' : !entry.enabled ? 'Disabled' : current?.error ? 'Needs attention' : loaded ? 'Loaded' : 'Not loaded'
+          const status = !config.enabled ? 'Developer mode off' : !entry.enabled ? 'Disabled' : current?.error ? 'Needs attention' : loaded ? 'Registered' : 'Not registered'
           return <section key={entry.directory} className="developer-app" aria-label={`${name} local app`}>
             <div className="developer-app-heading"><span className="settings-app-icon app-tile"><Icon id={current?.icon || entry.icon || 'lucide:code-xml'} size={21} /></span>
               <div><strong>{name}</strong><span className={`developer-app-status ${active && !current?.error && loaded ? 'is-ready' : current?.error ? 'has-error' : ''}`}>
@@ -120,15 +122,15 @@ export function DeveloperSettings() {
                   await change({ op: 'remove', directory: entry.directory })
                 }}><Icon id="lucide:trash-2" size={14} /></button></div>
             </div>
-            {current?.loadedAt && <div className="developer-app-time">Loaded at {new Date(current.loadedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>}
+            {current?.loadedAt && <div className="developer-app-time">Catalog refreshed at {new Date(current.loadedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>}
           </section>
         })}
       </div>}
       {note && <p className="settings-footnote" role="status">{note}</p>}
       <p className="settings-footnote">Reloading restarts the app’s content and resets temporary state. Its windows keep their position and size. Removing a registration keeps your source files.</p>
       <details className="settings-technical developer-guide"><summary>App structure & build setup</summary>
-        <p>Export <code>manifest</code> and <code>createApp</code> from <code>index.js</code>. Use the React instance and desktop APIs passed to <code>createApp</code>.</p>
-        <pre>{`my-app/\n  index.js    # JavaScript module\n  style.css   # Optional app styles`}</pre>
+        <p>Describe your app and permissions in <code>manifest.json</code>. Export <code>createApp</code> from <code>index.js</code>. Use the React instance and desktop APIs passed to <code>createApp</code>.</p>
+        <pre>{`my-app/\n  manifest.json # Identity and permissions\n  index.js    # JavaScript module\n  style.css   # Optional app styles`}</pre>
         <p>For JSX or TypeScript, run your bundler in watch mode and choose its output folder. Bundle dependencies into <code>index.js</code>; relative module imports and asset paths are not resolved by this loader.</p>
         <p>Use a unique app ID. A local app with the same ID as a shipped extension temporarily replaces it while enabled.</p>
       </details>
@@ -140,7 +142,7 @@ export function DeveloperSettings() {
         <div className="developer-folder-input"><input id="developer-app-folder" data-autofocus value={path} placeholder="~/Projects/my-app" spellCheck={false}
           disabled={busy || choosing} onChange={e => setPath(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && path.trim() && !busy) void add() }} />
           <button className="settings-button" disabled={busy || choosing} onClick={() => void browse()}>Browse…</button></div>
-        <p className="settings-footnote">The folder must contain <code>index.js</code>. If you use a build step, select the folder containing its compiled output.</p>
+        <p className="settings-footnote">The folder must contain <code>manifest.json</code> and <code>index.js</code>. If you use a build step, select the folder containing its compiled output.</p>
         {loadError && <div className="settings-inline-error" role="alert">{loadError}</div>}
       </div>
       <footer><button className="settings-button" disabled={busy || choosing} onClick={() => setAdding(false)}>Cancel</button>

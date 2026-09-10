@@ -15,7 +15,7 @@ BIN := src-tauri/target/release/bundle/macos/sshdesk.app/Contents/MacOS/sshdesk
 BUNDLE_FLAGS := --bundles app
 endif
 
-.PHONY: all run launch build plugins lint-plugins ui-build ui-install dev probe clean kill restart help
+.PHONY: all run launch build plugins lint-plugins ui-build ui-install dev test probe clean kill restart help
 
 all: run
 
@@ -76,8 +76,16 @@ ui-install:
 	@npm --prefix ui install
 
 ## dev: hot reload (vite + tauri). Edit .tsx and it updates instantly. Opens devtools.
+#
+# App views fetch the runtime page from the Vite server through their own
+# origin, so they hot-reload too. Reload an app in Settings to pick up edits.
 dev: kill
-	@cd src-tauri && SSHDESK_PLUGINS=$(PWD)/../plugins node ../ui/node_modules/@tauri-apps/cli/tauri.js dev
+	@cd src-tauri && SSHDESK_PLUGINS=$(CURDIR)/plugins node ../ui/node_modules/@tauri-apps/cli/tauri.js dev
+
+## test: native and loader unit tests (app runtime, permissions, developer registrations)
+test:
+	@cargo test --manifest-path src-tauri/Cargo.toml
+	@node --experimental-vm-modules --test "ui/tests/*.test.mjs"
 
 ## probe: run the headless verification harness against $(HOST)
 probe:

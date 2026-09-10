@@ -1,14 +1,17 @@
 # sshdesk plugins
 
-A plugin is a directory containing `index.js`. sshdesk scans the plugin root at
-boot, evaluates each `index.js` as an ES module, and registers what it exports.
-No recompilation of sshdesk is needed.
+A plugin is a directory containing `manifest.json` and `index.js`. sshdesk
+reads the manifest at boot to put the app in the dock; the JavaScript is not
+executed until you open a window, and then it runs in its own isolated view
+with exactly the access the manifest declares and you approved. No
+recompilation of sshdesk is needed.
 
 ```
 plugins/
   ports/
-    index.js        # required — the module sshdesk loads
-    style.css       # optional — injected at load
+    manifest.json   # required — identity, window, and the permissions it needs
+    index.js        # required — the module the app runtime loads
+    style.css       # optional — loaded into the app's own view
     src/index.jsx   # optional — source, if you use a build step
     package.json    # optional — only if you build
 ```
@@ -91,21 +94,82 @@ directory on this Mac, separately from per-machine appearance settings.
 
 ---
 
-## The three exports
+## `manifest.json` — identity and permissions
+
+The manifest is data, read without running your code. Everything sshdesk
+needs before a window opens lives here:
+
+```json
+{
+  "schemaVersion": 1,
+  "id": "ports",                     // unique; also the app id and token namespace
+  "name": "Ports",                   // dock label and window title
+  "description": "Inspect listening ports and open SSH tunnels.",
+  "version": "1.0.0",                // required; shown in the consent screen
+  "author": "Your name",             // optional, shown in app details
+  "icon": "lucide:ethernet-port",    // a pack icon, or an emoji — both work
+  "window": { "w": 940, "h": 520 },  // optional initial size
+  "permissions": ["remote.exec", "remote.sudo", "remote.tunnels", "desktop.openUrl"],
+  "requires": [ ... ],               // remote dependencies, see below
+  "tokens": { ... }                  // appearance tokens, see below
+}
+```
+
+`id` is lowercase (`[a-z][a-z0-9_-]*`) and cannot be a built-in app's. An
+unknown permission, a duplicate, or a token default that is not a plain
+colour/length/icon value rejects the whole manifest, and Settings says why.
+`requires` needs `remote.exec`, since installed software is run through it.
+
+### Permissions
+
+Declare only what your code calls. Each one is a sentence on the consent
+screen, and an operation without its permission is refused by the native
+gateway with `PermissionDenied`, never silently.
+
+| Permission | Unlocks | Grants the app |
+|---|---|---|
+| `remote.files.read` | `fs.list / read / readBinary / disk / caps` | Read files your SSH account can |
+| `remote.files.write` | `fs.write / mkdir / rename / copy / remove`, `fs:changed` events | Change those files |
+| `remote.exec` | `sdk.exec`, `sdk.capability` | Run commands as your SSH user |
+| `remote.sudo` | `sdk.sudo`, password prompts | Ask for your administrator password |
+| `remote.dbus` | `dbus.call / get / systemd`, `sys.watchUnits` | Talk to system services |
+| `remote.system` | `sys.snapshot`, `sys.clock` | Read processes, services, ports, time |
+| `remote.tunnels` | `net.forward / forwardSocket / unforward / forwards` | Expose remote services on local ports |
+| `desktop.openUrl` | `net.openUrl`, `ui.open` | Open its tunnels in a browser, open other apps |
+| `desktop.embed` | `EmbeddedWebview` | Show one of its tunnels inside its window |
+| `network` | `fetch`, `WebSocket` | Reach the internet directly from the app view |
+
+`sudo` is separate from `exec` on purpose: an app that only lists things
+should not be able to ask for the root password. Tunnels an app opens are its
+own — `openUrl` and `EmbeddedWebview` accept only ports it forwarded, and they
+are closed with the window.
+
+`ui.confirm / prompt / alert`, `prefs`, `bus`, `host.current`, `path` and
+`fmt` need no permission. The rest of the desktop framework — connecting
+machines, terminals, packages, dependency installs, configuration, local
+downloads and drags — is not available to apps at all; those stay desktop
+actions the user takes.
+
+### Consent
+
+The first time you open an app on a machine, sshdesk shows its name, version,
+source folder and each requested permission, and asks before any of its code
+runs. Approval is saved per app, per machine, in `app-grants.json` in the app
+configuration directory on this Mac. An app with an empty `permissions` list
+opens without a prompt. Settings → Apps & Extensions → *app* → **Revoke
+access…** forgets the approval and closes its windows.
+
+A published app's approval is pinned to the exact bytes of its manifest, code
+and stylesheet, so an update asks again. A local app registered in Developer
+settings is approved for its folder: code edits reuse the approval, and only a
+change to `manifest.json` asks again.
+
+### Remote dependencies
 
 ```js
-export const manifest = {
-  id: 'ports',                    // unique; also the app id and token namespace
-  name: 'Ports',                  // dock label and window title
-  description: 'Inspect listening ports and open SSH tunnels.',
-  version: '1.0.0',               // optional app version, shown in app details
-  author: 'Your name',            // optional, shown in app details
-  icon: 'lucide:ethernet-port',   // a pack icon, or an emoji — both work
-  window: { w: 940, h: 520 },     // optional initial size
-
   // What this plugin needs on the remote. Checked when a window opens; the
   // user is shown what would happen and asked before anything is installed.
-  requires: [
+  "requires": [
     // probe only — a missing command is reported, never installed
     { kind: 'command', command: 'git', hint: 'install git to use this' },
 
@@ -124,20 +188,26 @@ export const manifest = {
 
   // Tokens you own. Settings renders an editor for these with no code written
   // for your plugin, and users change them in one place for every app.
-  tokens: {
-    app:      { type: 'icon',  default: 'desk:network', label: 'App icon' },
-    listening:{ type: 'icon',  default: 'desk:service', label: 'Listening port' },
+  "tokens": {
+    "app":       { "type": "icon",  "default": "desk:network", "label": "App icon" },
+    "listening": { "type": "icon",  "default": "desk:service", "label": "Listening port" },
     // '@' inherits from another token: retint the desktop and this follows.
-    mine:     { type: 'color', default: '@desk.ok',     label: 'My port' },
-  },
-}
+    "mine":      { "type": "color", "default": "@desk.ok",     "label": "My port" }
+  }
+```
 
+## `index.js` — the two exports
+
+```js
 export function createAdapter(sdk) { ... }   // JSON -> CLI -> JSON. Optional.
 export function createApp(ctx) { ... }       // returns a React component. Required.
 ```
 
-Nothing else is loaded. A plugin that throws during load is skipped; its error
-appears in Settings and the developer console. The rest of the desktop still boots.
+An `export const manifest` is still allowed for tooling, but sshdesk reads
+`manifest.json`; if both exist their `id` must match. Nothing else is loaded.
+An app that throws while starting shows the error in its own window and in
+Developer settings. The rest of the desktop is unaffected — each app runs in a
+separate view, so it cannot take the desktop or another app down.
 
 ---
 
@@ -383,48 +453,72 @@ own class names. A scrollable content region should use `flex: 1`,
 ### Useful bits of `fw`
 
 ```js
-fw.fs.list(path) / read / write / mkdir / rename / copy / remove / download / upload
-fw.net.forward(remotePort, preferredLocal?) / unforward / forwards / openUrl
-fw.prefs.get(key, fallback) / set(key, value)      // localStorage, persisted
-fw.bus.on(topic, fn) / emit(topic, payload)        // cross-window sync
+fw.fs.list(path) / read / readBinary / write / mkdir / rename / copy / remove / disk / caps
+fw.net.forward(remotePort, preferredLocal?) / unforward / forwards / forwardSocket / openUrl
+fw.sys.snapshot() / clock() / watchUnits()
+fw.ui.confirm(o) / prompt(o) / alert(o) / open(appId, props)
+fw.prefs.get(key, fallback) / set(key, value)      // this app's own storage, persisted
+fw.bus.on(topic, fn) / emit(topic, payload)        // between this app's windows
 fw.host.current()
 fw.path.join / parent / base      fw.fmt.size / time
 ```
 
-Emit `fs:changed` with `{ dirs: [...] }` after mutating the filesystem so open
-Files windows refresh themselves.
+Each group needs the permission listed under *Permissions* above; a call
+without it rejects with `PermissionDenied`. Emit `fs:changed` with
+`{ dirs: [...] }` after mutating the filesystem (needs `remote.files.write`)
+so open Files windows refresh themselves.
 
 ---
 
 ## Security model
 
-Plugins are **trusted code** today, like VS Code extensions. A plugin runs in
-the same context as the desktop and can call `fw` directly — the adapter is not
-a sandbox. Install plugins you trust.
+An app is not trusted code. It runs in its own native webview on a private
+origin (`appview://<identity>`), and the only thing that origin can reach is a
+native gateway that knows which app is calling, which machine it was opened
+on, and what it was approved for. Enforcement lives in Rust, not in the
+JavaScript the app can read.
 
-What the tiers change is that this is now *fixable*. When every plugin's only
-primitive was `exec(argv)`, a manifest could not say anything meaningful — full
-shell or nothing. With typed lanes a manifest can be scoped:
+What that isolation gives you, and what it costs:
 
-```json
-{ "permissions": {
-    "dbus": ["org.freedesktop.systemd1"],
-    "fs":   ["/etc/systemd/system"],
-    "exec": false } }
-```
+- **No shared page.** The app cannot see the desktop's DOM, the framework
+  globals, other apps, or the desktop's IPC commands. Calling `invoke` on
+  anything but its own gateway is rejected before it reaches a handler.
+- **Content Security Policy.** No frames, workers, external scripts or forms.
+  Network access exists only if `network` was requested and approved.
+- **Every request is checked.** The gateway maps each operation to a
+  permission, pins it to the machine the window was opened on, refuses
+  requests for other machines, and rate-limits a misbehaving app.
+- **Dialogs are attributed.** Confirmations and password prompts are drawn by
+  the desktop with the app's name and machine on them; the app only receives
+  the answer. An app cannot draw a lookalike over desktop chrome, because
+  native views are hidden while a desktop menu or dialog is open.
+- **Tunnels are leased.** Forwards an app opens are released when its window
+  closes, and shared forwards stay up for whoever else still uses them.
+- **Nothing runs until asked.** The catalog reads `manifest.json`; `index.js`
+  is fetched only into an approved runtime.
 
-That enforcement is not built yet, and it has to live in Rust rather than JS to
-mean anything. But tier 1 is the precondition for it.
+Permissions are coarse on purpose: with typed lanes for files, D-Bus, tunnels
+and commands, a manifest can say something meaningful, and a user can read it.
+Path- or service-scoped grants would fit the same gateway later.
+
+What remains yours: the remote machine's own permissions still apply after
+the platform check, and `remote.exec` is what it says — a shell as your user.
+Read the consent screen.
 
 ---
 
 ## A minimal plugin
 
+`~/.sshdesk/plugins/uptime/manifest.json`:
+
+```json
+{ "schemaVersion": 1, "id": "uptime", "name": "Uptime", "version": "1.0.0",
+  "icon": "⏱", "permissions": ["remote.exec"] }
+```
+
 `~/.sshdesk/plugins/uptime/index.js`:
 
 ```js
-export const manifest = { id: 'uptime', name: 'Uptime', icon: '⏱' }
-
 export function createAdapter(sdk) {
   return {
     async read() {
@@ -445,7 +539,8 @@ export function createApp({ React, html, useApi }) {
 }
 ```
 
-Drop it in, press ⌘R, and it is in the dock.
+Drop it in, press ⌘R, and it is in the dock. Opening it asks once, per
+machine, for **Run commands**.
 
 
 ## Development checks
@@ -453,11 +548,20 @@ Drop it in, press ⌘R, and it is in the dock.
 From the sshdesk project directory:
 
 ```sh
-node --experimental-vm-modules --test ui/tests/developer.test.mjs
-cargo test --manifest-path src-tauri/Cargo.toml developer::tests
+make test
 ```
 
-The loader tests cover individual reloads, failed-build recovery, ID conflicts,
-shipped-app restoration, token validation, and automatic reload. Native tests
-cover folder registration, persistence, disabled/unregistered reads, and keeping
-source files when removing registrations.
+That runs the native tests (`cargo test --manifest-path src-tauri/Cargo.toml`)
+and the loader tests (`node --experimental-vm-modules --test "ui/tests/*.test.mjs"`).
+
+The native runtime tests cover permission mapping, host pinning, closed-app
+cancellation, request budgets, manifest validation, tunnel-only embedding, and
+the development proxy. The loader tests cover individual reloads,
+failed-manifest recovery, ID conflicts, shipped-app restoration, token
+validation, and automatic reload. `ui/tests/runtime.test.mjs` keeps the
+consent copy in step with the native permission list and checks that every
+shipped manifest declares what its code calls.
+
+`make dev` serves app views from Vite too, through each app's own origin, so
+edits to the runtime hot-reload; reload an app from Developer settings to pick
+up edits to its own files.

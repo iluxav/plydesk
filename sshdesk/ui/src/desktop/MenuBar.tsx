@@ -8,13 +8,14 @@ import { workArea } from '../wm/workArea'
 import { useKeyboardPreferences } from '../keyboard/preferences'
 import { formatShortcut, type ActionId } from '../keyboard/shortcuts'
 
-export function MenuBar({ hosts, active, onSwitch, onAdd, onDisconnect, onReloadPlugins }: {
+export function MenuBar({ hosts, active, onSwitch, onAdd, onDisconnect, onReloadPlugins, onSearch }: {
   hosts: string[]
   active: string
   onSwitch: (target: string) => void
   onAdd: () => void
   onDisconnect: (target: string) => void
   onReloadPlugins?: () => Promise<string[]>
+  onSearch?: () => void
 }) {
   const menu = useContextMenu()
   const { state, dispatch } = useWM()
@@ -96,9 +97,10 @@ export function MenuBar({ hosts, active, onSwitch, onAdd, onDisconnect, onReload
           { label: 'Quit sshdesk', danger: true, onSelect: () => { void fw.win.close() } },
         ])}>sshdesk</button>
       <button className="menubar-item" aria-haspopup="menu"
-        onClick={ev => menu.open(ev, APPS.filter(app => !app.hidden).map(app => ({
-          label: app.title, onSelect: () => fw.ui.open(app.id, { host: active }),
-        })))}>Applications</button>
+        onClick={ev => menu.open(ev, [
+          ...(onSearch ? [{ label: 'Search apps and files…', shortcut: bindings.launcher ? formatShortcut(bindings.launcher) : undefined, onSelect: onSearch }, { type: 'separator' as const }] : []),
+          ...APPS.filter(app => !app.hidden).map(app => ({ label: app.title, onSelect: () => fw.ui.open(app.id, { host: active }) })),
+        ])}>Applications</button>
       <button className="menubar-item" aria-haspopup="menu" onClick={ev => menu.open(ev, windowMenu)}>Window</button>
       <span className="menubar-divider" />
       <div className="menubar-hosts" aria-label="Connected machines">

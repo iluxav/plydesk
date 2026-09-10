@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-systemd-property"
+description = "Enables the systemd_property command without any pre-configured scope."
+commands.allow = ["systemd_property"]
+
+[[permission]]
+identifier = "deny-systemd-property"
+description = "Denies the systemd_property command without any pre-configured scope."
+commands.deny = ["systemd_property"]

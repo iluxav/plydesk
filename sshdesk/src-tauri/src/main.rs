@@ -3,6 +3,8 @@
 mod term;
 mod keyboard;
 mod developer;
+mod runtime;
+mod index;
 
 use serde::Serialize;
 use sshdesk_core::{
@@ -77,6 +79,7 @@ fn with_host<T>(
 ) -> Result<T, String> {
     let mut map = hosts.0.lock().map_err(|e| e.to_string())?;
     let h = map.get_mut(target).ok_or("not connected")?;
+    runtime::ensure_request_alive()?;
     f(h).map_err(|e| e.to_string())
 }
 
@@ -97,11 +100,12 @@ fn clock(hosts: State<Hosts>, target: String) -> Result<sshdesk_core::ServerTime
 }
 
 #[tauri::command]
-fn disconnect(hosts: State<Hosts>, target: String) -> Result<(), String> {
+fn disconnect(hosts: State<Hosts>, indexes: State<index::Indexes>, target: String) -> Result<(), String> {
     let mut map = hosts.0.lock().map_err(|e| e.to_string())?;
     if let Some(mut h) = map.remove(&target) {
         h.disconnect();
     }
+    index::forget(&indexes, &target);
     Ok(())
 }
 
@@ -242,6 +246,8 @@ fn stage_for_drag(
                 .map(|c| if c == '/' || c == '\\' || c == ':' { '_' } else { c })
                 .collect();
             let local = dir.join(if safe.is_empty() { "file" } else { &safe });
+            // Skipped entries (sockets, broken links) are left out of the
+            // drag rather than failing it; Finder could not use them anyway.
             h.sftp()?.download_tree(p, &local)?;
             out.push(local.to_string_lossy().to_string());
         }
@@ -279,16 +285,27 @@ fn upload_files(
     with_host(&hosts, &target, |h| {
         let mut bytes = 0u64;
         let mut n = 0;
+        let mut skipped = Vec::new();
         for l in &locals {
             let path = std::path::Path::new(l);
             let name = path.file_name().map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_else(|| "file".into());
             let dest = sshdesk_core::sftp::join(&remote_dir, &name);
-            bytes += h.sftp()?.upload_tree(path, &dest)?;
+            let report = h.sftp()?.upload_tree(path, &dest)?;
+            bytes += report.bytes;
+            skipped.extend(report.skipped);
             n += 1;
         }
-        Ok(format!("uploaded {n} item{} ({bytes} bytes)", if n == 1 { "" } else { "s" }))
+        Ok(format!("uploaded {n} item{} ({bytes} bytes){}", if n == 1 { "" } else { "s" }, skipped_note(&skipped)))
     })
+}
+
+/// "· 3 skipped (permission denied)" or nothing.
+fn skipped_note(skipped: &[sshdesk_core::sftp::Skipped]) -> String {
+    match skipped {
+        [] => String::new(),
+        [first, ..] => format!(" · {} skipped ({})", skipped.len(), first.reason),
+    }
 }
 
 /// Read a local image as a data URL, for the desktop background.
@@ -481,8 +498,8 @@ fn download_file(
     with_host(&hosts, &target, |h| {
         // download_tree, not download: a folder is a legitimate thing to want,
         // and SFTP has no bulk primitive so somebody has to do the walk.
-        let n = h.sftp()?.download_tree(&path, std::path::Path::new(&dest))?;
-        Ok(format!("saved {safe} ({n} bytes) to ~/Downloads"))
+        let report = h.sftp()?.download_tree(&path, std::path::Path::new(&dest))?;
+        Ok(format!("saved {safe} ({} bytes) to ~/Downloads{}", report.bytes, skipped_note(&report.skipped)))
     })
 }
 
@@ -661,7 +678,7 @@ fn rename_path(hosts: State<Hosts>, target: String, from: String, to: String) ->
 }
 
 #[tauri::command]
-fn copy_path(hosts: State<Hosts>, target: String, from: String, to: String) -> Result<(), String> {
+fn copy_path(hosts: State<Hosts>, target: String, from: String, to: String) -> Result<sshdesk_core::sftp::TreeReport, String> {
     with_host(&hosts, &target, |h| copy(h, &from, &to))
 }
 
@@ -735,8 +752,6 @@ fn exec(
     })
 }
 
-#[derive(Serialize)]
-struct Plugin { name: String, dir: String, source: String, style: Option<String> }
 
 /// Everywhere plugins can live, lowest precedence first.
 ///
@@ -782,37 +797,17 @@ fn plugin_roots(app: &tauri::AppHandle) -> Vec<std::path::PathBuf> {
 }
 
 #[tauri::command]
-fn list_plugins(app: tauri::AppHandle) -> Result<Vec<Plugin>, String> {
-    // Keyed by plugin id so a later root replaces an earlier one wholesale,
-    // rather than the same plugin appearing twice in the dock.
-    let mut found: std::collections::BTreeMap<String, Plugin> = Default::default();
-
-    let roots = plugin_roots(&app);
-    let roots_seen = roots.len();
-    for root in roots {
-        let Ok(entries) = std::fs::read_dir(&root) else { continue };
+fn list_plugins(app: tauri::AppHandle) -> Result<Vec<runtime::CatalogEntry>, String> {
+    let mut found = std::collections::BTreeMap::new();
+    for root in plugin_roots(&app) {
+        let Ok(entries) = std::fs::read_dir(root) else { continue };
         for e in entries.flatten() {
             let dir = e.path();
-            if !dir.is_dir() { continue }
-            let index = dir.join("index.js");
-            if !index.is_file() { continue }
-            let name = dir.file_name().unwrap_or_default().to_string_lossy().to_string();
-            match std::fs::read_to_string(&index) {
-                Ok(source) => { found.insert(name.clone(), Plugin {
-                    name,
-                    dir: dir.to_string_lossy().to_string(),
-                    source,
-                    style: std::fs::read_to_string(dir.join("style.css")).ok(),
-                }); }
-                Err(err) => eprintln!("sshdesk: cannot read {}: {err}", index.display()),
-            }
+            if !dir.is_dir() || !dir.join("index.js").is_file() { continue }
+            let entry = runtime::catalog_entry(&dir);
+            found.insert(entry.name.clone(), entry);
         }
     }
-    // "where did my plugins go" was only answerable by reading this function,
-    // so it says what it looked at and what it found.
-    eprintln!("sshdesk: {} plugin(s) from {} root(s): {}",
-        found.len(), roots_seen,
-        found.values().map(|p| p.name.as_str()).collect::<Vec<_>>().join(", "));
     Ok(found.into_values().collect())
 }
 
@@ -863,7 +858,10 @@ fn forward_socket(
     // is still in the map and still bound — it just answers nothing. Handing
     // that back gives the caller a URL that loads a blank frame, which is what
     // a dead VS Code window turned out to be.
-    if let Some(p) = fwds.0.lock().map_err(|e| e.to_string())?.get(&key).copied() {
+    // Bound first: a guard created in an `if let` scrutinee lives through the
+    // body, and the body locks the same map again.
+    let remembered = fwds.0.lock().map_err(|e| e.to_string())?.get(&key).copied();
+    if let Some(p) = remembered {
         if port_answers(p) { return Ok(p) }
         fwds.0.lock().map_err(|e| e.to_string())?.remove(&key);
     }
@@ -1017,7 +1015,17 @@ fn main() {
         .manage(Forwards::default())
         .manage(Watchers::default())
         .manage(developer::DeveloperApps::default())
-        .invoke_handler(tauri::generate_handler![
+        .manage(runtime::Runtimes::default())
+        .manage(index::Indexes::default())
+        .register_uri_scheme_protocol("appview", runtime::protocol)
+        .invoke_handler({
+            let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
+            index::index_build, index::index_search, index::index_status,
+            runtime::runtime_prepare, runtime::runtime_discard, runtime::runtime_start,
+            runtime::runtime_bootstrap, runtime::runtime_list, runtime::runtime_context,
+            runtime::runtime_devtools, runtime::runtime_event, runtime::runtime_reply,
+            runtime::runtime_call, runtime::runtime_embed, runtime::runtime_embed_close,
+            runtime::runtime_embed_bounds, runtime::runtime_close, runtime::runtime_revoke, runtime::runtime_snapshot,
             developer::developer_apps_get, developer::developer_apps_change,
             developer::developer_app_read, developer::developer_app_stamps,
             developer::developer_open_devtools,
@@ -1034,7 +1042,15 @@ fn main() {
             term_open, term_write, term_resize, term_close, exec, list_plugins,
             forward_port, cancel_forward, list_forwards, open_url,
             forward_socket, cancel_forward_socket
-        ])
+        ];
+            move |invoke| {
+                if !runtime::allow_invoke(&invoke) {
+                    invoke.resolver.reject("PermissionDenied: apps must use their runtime SDK");
+                    return true;
+                }
+                handler(invoke)
+            }
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

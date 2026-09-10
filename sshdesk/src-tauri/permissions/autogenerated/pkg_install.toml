@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pkg-install"
+description = "Enables the pkg_install command without any pre-configured scope."
+commands.allow = ["pkg_install"]
+
+[[permission]]
+identifier = "deny-pkg-install"
+description = "Denies the pkg_install command without any pre-configured scope."
+commands.deny = ["pkg_install"]

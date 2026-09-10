@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cancel-forward"
+description = "Enables the cancel_forward command without any pre-configured scope."
+commands.allow = ["cancel_forward"]
+
+[[permission]]
+identifier = "deny-cancel-forward"
+description = "Denies the cancel_forward command without any pre-configured scope."
+commands.deny = ["cancel_forward"]

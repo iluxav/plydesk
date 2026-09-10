@@ -1,0 +1,15 @@
+{
+  "identifier": "app-runtime",
+  "webviews": [
+    "app-*"
+  ],
+  "permissions": [
+    "app-runtime"
+  ],
+  "remote": {
+    "urls": [
+      "appview://*",
+      "http://appview.*.localhost"
+    ]
+  }
+}

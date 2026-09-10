@@ -1,50 +1,15 @@
-import * as React from 'react'
-import htm from 'htm'
-import { fw } from '../fw'
-import { declareTokens, removeTokenDeclarations, type TokenMap } from '../fw/tokens'
-import type { Requirement } from '../fw'
-import { makeSdk, type Sdk } from './sdk'
-import { useFw, useHost } from '../wm/host'
+import type { TokenMap } from '../fw/tokens'
+import { declareTokens, removeTokenDeclarations } from '../fw/tokens'
 import { APPS, type AppDef } from '../desktop/registry'
-import { EmbeddedWebview } from '../wm/EmbeddedWebview'
+import { PluginView } from './PluginView'
 
-interface PluginModule {
-  manifest?: {
-    id: string
-    name: string
-    description?: string
-    version?: string
-    author?: string
-    icon?: string
-    window?: { w?: number; h?: number }
-    /** Tokens this plugin owns; Settings renders an editor for each. */
-    tokens?: TokenMap
-    /** Content types this plugin opens, e.g. ['application/pdf', 'text/csv']. */
-    opens?: string[]
-    /** What this plugin needs on the remote; checked when a window opens. */
-    requires?: Requirement[]
-  }
-  createAdapter?: (sdk: Sdk) => Record<string, unknown>
-  createApp?: (ctx: {
-    React: typeof React
-    h: typeof React.createElement
-    /** htm tagged template — JSX-like markup with no build step. */
-    html: ReturnType<typeof htm.bind>
-    /** Ambient API, bound to the focused host. Fine for one-shot actions. */
-    fw: typeof fw
-    /** Hook returning the API pinned to *this window's* host. Prefer it. */
-    useFw: typeof useFw
-    /** Ambient adapter, bound to the focused host. */
-    api: Record<string, unknown>
-    /** Hook returning the adapter pinned to *this window's* host. Prefer it. */
-    useApi: () => Record<string, unknown>
-    /** First-party web content attached inside this desktop window. */
-    EmbeddedWebview: typeof EmbeddedWebview
-  }) => React.ComponentType<any>
+export interface AppManifest {
+  schemaVersion: number; id: string; name: string; version: string; icon?: string;
+  description?: string; author?: string; window?: { w?: number; h?: number };
+  permissions: string[]; tokens?: TokenMap; opens?: string[]; requires?: AppDef['requires'];
 }
-
-export interface RawPlugin { name: string; dir: string; source: string; style?: string | null; stamp?: string }
-interface Prepared { def: AppDef; tokens: TokenMap; style?: string | null }
+export interface RawPlugin { name: string; dir: string; manifest?: AppManifest | null; error?: string | null; stamp?: string }
+interface Prepared { def: AppDef; tokens: TokenMap }
 export interface PluginFailure { name: string; directory: string; message: string }
 export interface LocalApp { directory: string; enabled: boolean; watch: boolean; name?: string; icon?: string }
 export interface DeveloperConfig { enabled: boolean; apps: LocalApp[] }
@@ -100,57 +65,28 @@ function serial<T>(work: () => Promise<T>, quiet = false): Promise<T> {
 }
 
 async function prepare(p: RawPlugin, developer = false): Promise<Prepared> {
-  // Give dynamically loaded bundles recognizable paths in the inspector.
-  const debugPath = `sshdesk-plugin://${p.dir.split('/').map(encodeURIComponent).join('/')}/index.js`
-  const url = URL.createObjectURL(new Blob([p.source, `\n//# sourceURL=${debugPath}\n`], { type: 'text/javascript' }))
-  let mod: PluginModule
-  try { mod = await import(/* @vite-ignore */ url) as PluginModule }
-  finally { URL.revokeObjectURL(url) }
-  const m = mod.manifest
-  if (!m || typeof m.id !== 'string' || !/^[a-z][a-z0-9_-]*$/.test(m.id) || typeof m.name !== 'string' || !m.name.trim()) {
-    throw new Error('Export a manifest with an id (lowercase letters, digits, hyphens or underscores) and a name.')
+  const m = p.manifest
+  if (!m) throw new Error(p.error || 'Add a static manifest.json beside index.js.')
+  if (m.schemaVersion !== 1 || typeof m.id !== 'string' || !/^[a-z][a-z0-9_-]*$/.test(m.id)
+      || typeof m.name !== 'string' || !m.name.trim() || typeof m.version !== 'string') {
+    throw new Error('Invalid manifest.json: schemaVersion, id, name, and version are required.')
   }
   if (m.id === 'desk' || APPS.some(a => a.id === m.id && !a.plugin)) throw new Error(`“${m.id}” is reserved for a built-in app.`)
-  if (typeof mod.createApp !== 'function') throw new Error('Export a createApp function that returns a React component.')
   if (m.icon !== undefined && typeof m.icon !== 'string') throw new Error('manifest.icon must be an icon name or emoji string.')
   for (const value of [m.window?.w, m.window?.h]) {
-    if (value !== undefined && (typeof value !== 'number' || !Number.isFinite(value) || value <= 0)) {
-      throw new Error('manifest.window dimensions must be positive numbers.')
-    }
+    if (value !== undefined && (typeof value !== 'number' || !Number.isFinite(value) || value <= 0)) throw new Error('App window dimensions must be positive numbers.')
   }
-  if (m.tokens !== undefined) {
-    if (!m.tokens || typeof m.tokens !== 'object' || Array.isArray(m.tokens)) throw new Error('manifest.tokens must be an object.')
-    for (const [name, token] of Object.entries(m.tokens)) {
-      if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(name) || !token || !['icon', 'color', 'length', 'image'].includes(token.type)
-        || typeof token.default !== 'string' || typeof token.label !== 'string' || (token.hint !== undefined && typeof token.hint !== 'string')) {
-        throw new Error(`Invalid appearance token “${name}”: supply a type, string default, and label.`)
-      }
-    }
-  }
-  const build = mod.createAdapter
-  const api = build ? build(makeSdk()) : {}
-  const perHost = new Map<string, Record<string, unknown>>()
-  const useApi = () => {
-    const h = useHost()
-    if (!build) return api
-    let a = perHost.get(h)
-    if (!a) { a = build(makeSdk(() => h)); perHost.set(h, a) }
-    return a
-  }
-  const Component = mod.createApp({ React, h: React.createElement, html: htm.bind(React.createElement), fw, useFw, api, useApi, EmbeddedWebview })
-  if (typeof Component !== 'function' && !(typeof Component === 'object' && Component !== null)) {
-    throw new Error('createApp must return a React component.')
+  if (m.tokens) for (const [name, token] of Object.entries(m.tokens)) {
+    if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(name) || !token || !['icon','color','length','image'].includes(token.type)
+      || typeof token.default !== 'string' || typeof token.label !== 'string') throw new Error(`Invalid token: ${name}`)
   }
   return {
-    def: {
-      id: m.id, title: m.name, icon: m.icon ?? '🧩', component: Component,
-      w: m.window?.w ?? 860, h: m.window?.h ?? 540,
-      opens: m.opens, requires: m.requires,
-      description: typeof m.description === 'string' ? m.description : undefined,
-      plugin: { directory: p.dir, version: typeof m.version === 'string' ? m.version : undefined, author: typeof m.author === 'string' ? m.author : undefined, developer, revision: ++revision },
+    def: { id: m.id, title: m.name, icon: m.icon || '🧩', component: PluginView,
+      w: m.window?.w ?? 860, h: m.window?.h ?? 540, opens: m.opens, requires: m.requires,
+      description: m.description,
+      plugin: { directory: p.dir, version: m.version, author: m.author, developer, revision: ++revision, permissions: m.permissions },
     },
-    tokens: { app: { type: 'icon', default: m.icon ?? '🧩', label: 'App icon' }, ...(m.tokens ?? {}) },
-    style: p.style,
+    tokens: { app: { type: 'icon', default: m.icon || '🧩', label: 'App icon' }, ...(m.tokens ?? {}) },
   }
 }
 
@@ -168,10 +104,7 @@ function publish() {
     const at = APPS.findIndex(a => a.id === id)
     if (APPS[at] === prepared.def) continue
     document.querySelectorAll<HTMLStyleElement>('style[data-plugin]').forEach(el => { if (el.dataset.plugin === id) el.remove() })
-    if (prepared.style) {
-      const style = document.createElement('style')
-      style.dataset.plugin = id; style.textContent = prepared.style; document.head.appendChild(style)
-    }
+
     if (at < 0) APPS.push(prepared.def)
     else APPS[at] = prepared.def
     declareTokens(id, prepared.tokens)

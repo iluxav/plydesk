@@ -8,10 +8,18 @@ import { useContextMenu, type MenuItem } from '../wm/ContextMenu'
 import { FileSidebar, DEFAULT_SHORTCUTS, type Shortcut } from './FileSidebar'
 import { useDrag, useDropTarget, dropProps } from '../wm/dnd'
 import { useDialog } from '../wm/Dialog'
+import { DEFAULT_SORT, parseSort, sortEntries, toggleSort, type SortKey, type SortState } from './fileSort'
 
 let instances = 0
 
 const ROW = 33
+
+/** "2 items could not be copied · notes/pipe: not a regular file (other)" */
+function skippedMessage(skipped: { path: string; reason: string }[]): string {
+  const first = skipped[0]
+  const name = first.path.split('/').filter(Boolean).slice(-2).join('/')
+  return `${skipped.length} ${skipped.length === 1 ? 'item' : 'items'} could not be copied · ${name}: ${first.reason}`
+}
 
 export function FileExplorer({ setTitle, path = '~' }: { setTitle?: (t: string) => void; path?: string }) {
   const [cwd, setCwd] = useState('~')
@@ -43,6 +51,9 @@ export function FileExplorer({ setTitle, path = '~' }: { setTitle?: (t: string) 
   // was shared, so nobody loses their shortcuts to the fix.
   const [shortcuts, setShortcuts] = useState<Shortcut[]>(
     () => fw.prefs.hostGet('files.shortcuts', DEFAULT_SHORTCUTS, 'files.shortcuts'))
+  // Column order is a habit, and one that differs per machine as much as the
+  // pinned folders do, so it is saved beside them.
+  const [sort, setSort] = useState<SortState>(() => parseSort(fw.prefs.hostGet('files.sort', DEFAULT_SORT)))
   const cwdRef = useRef('~')
   const scroller = useRef<HTMLDivElement>(null)
   const anchor = useRef<string | null>(null)
@@ -86,6 +97,7 @@ export function FileExplorer({ setTitle, path = '~' }: { setTitle?: (t: string) 
   useEffect(() => { void load(path); return () => { request.current++ } }, [])
 
   useEffect(() => { fw.prefs.hostSet('files.shortcuts', shortcuts) }, [fw, shortcuts])
+  useEffect(() => { fw.prefs.hostSet('files.sort', sort) }, [fw, sort])
 
   // One handler per window; the destination arrives as `arg` from the element.
   useDropTarget(dropId, (payload, { meta, arg }) => transfer(payload.paths, arg, meta))
@@ -158,9 +170,18 @@ export function FileExplorer({ setTitle, path = '~' }: { setTitle?: (t: string) 
     if (p?.dirs?.some(d => d === cwdRef.current)) load(cwdRef.current)
   }), [fw, load, selfId])
 
-  const entries = useMemo(() => (d?.entries ?? []).filter(e =>
+  const entries = useMemo(() => sortEntries((d?.entries ?? []).filter(e =>
     (showHidden || !e.name.startsWith('.')) && e.name.toLocaleLowerCase().includes(query.toLocaleLowerCase()),
-  ), [d, query, showHidden])
+  ), sort), [d, query, showHidden, sort])
+  const column = (key: SortKey, label: string, className: string) => {
+    const active = sort.key === key
+    return <span role="columnheader" className={className} aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+      <button type="button" className="files-column" title={`Sort by ${label.toLowerCase()}`} aria-pressed={active}
+        onClick={() => setSort(s => toggleSort(s, key))}>
+        <span>{label}</span>{active && <Icon id={sort.dir === 'asc' ? 'lucide:chevron-up' : 'lucide:chevron-down'} size={10} />}
+      </button>
+    </span>
+  }
   const navigateHistory = (offset: number) => {
     const index = history.current.index + offset
     const path = history.current.paths[index]
@@ -188,17 +209,19 @@ export function FileExplorer({ setTitle, path = '~' }: { setTitle?: (t: string) 
     if (bad) { setErr(`cannot move ${fw.path.base(bad)} into itself`); return }
     try {
       let n = 0
+      const skipped: { path: string; reason: string }[] = []
       for (const src of paths) {
         const d = fw.path.join(dest, fw.path.base(src))
         if (src === d) continue
         if (move) await fw.fs.rename(src, d)
-        else await fw.fs.copy(src, d)
+        else skipped.push(...(await fw.fs.copy(src, d)).skipped)
         n++
       }
       const dirs = [dest, ...paths.map(p => fw.path.parent(p))]
       await load(cwdRef.current)
       fw.bus.emit('fs:changed', { dirs, from: selfId })
       setNote(`${move ? 'moved' : 'copied'} ${n} to ${dest}`)
+      if (skipped.length) setErr(skippedMessage(skipped))
     } catch (e) { setErr(String(e)) }
   }
 
@@ -286,15 +309,17 @@ export function FileExplorer({ setTitle, path = '~' }: { setTitle?: (t: string) 
     const c = fw.clip.get()
     if (!c) return
     act(async () => {
+      const skipped: { path: string; reason: string }[] = []
       for (const src of c.paths) {
         const base = fw.path.base(src)
         let dest = fw.path.join(cwd, base)
         // Copying into the same directory would collide with the source.
         if (c.op === 'copy' && src === dest) dest = fw.path.join(cwd, `${base} copy`)
-        if (c.op === 'copy') await fw.fs.copy(src, dest)
+        if (c.op === 'copy') skipped.push(...(await fw.fs.copy(src, dest)).skipped)
         else await fw.fs.rename(src, dest)
       }
       if (c.op === 'cut') fw.clip.clear()
+      if (skipped.length) setErr(skippedMessage(skipped))
     })
   }
 
@@ -455,11 +480,11 @@ export function FileExplorer({ setTitle, path = '~' }: { setTitle?: (t: string) 
                         shrink-0 select-text break-all">{err}</div>
       )}
 
-      <div className="files-columns">
-        <span className="flex-1">Name</span>
-        <span className="w-20 text-right">Size</span>
-        <span className="files-permissions w-24 pl-3">Permissions</span>
-        <span className="files-modified w-32 pl-3">Modified</span>
+      <div className="files-columns" role="row">
+        {column('name', 'Name', 'flex-1')}
+        {column('size', 'Size', 'w-20 flex justify-end')}
+        {column('mode', 'Permissions', 'files-permissions w-24 pl-3')}
+        {column('mtime', 'Modified', 'files-modified w-32 pl-3')}
       </div>
 
       {/* list — click the empty area below to clear the selection */}

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "systemctl",
+  "name": "Services",
+  "description": "Inspect and manage systemd services.",
+  "icon": "desk:service",
+  "window": {
+    "w": 940,
+    "h": 580
+  },
+  "version": "1.0.0",
+  "permissions": [
+    "remote.exec",
+    "remote.sudo",
+    "remote.dbus"
+  ]
+}

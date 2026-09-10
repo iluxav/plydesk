@@ -1,4 +1,5 @@
 import { fw } from '../fw'
+import { invoke } from './invoke'
 
 export interface ExecOut { stdout: string; stderr: string; code: number; elapsed_ms: number }
 
@@ -40,8 +41,6 @@ export function setPasswordPrompt(fn: (host: string) => Promise<string | null>) 
   askPassword = fn
 }
 
-const invoke = <T,>(cmd: string, args: Record<string, unknown>): Promise<T> =>
-  (window as any).__TAURI__.core.invoke(cmd, args)
 
 /**
  * `hostOf` lets a window pin its sdk to its own machine. Without it a plugin
@@ -72,8 +71,8 @@ export function makeSdk(hostOf: () => string = () => fw.host.current()): Sdk {
   return {
     exec,
     sudo,
-    fs: fw.fs,
-    dbus: fw.dbus,
+    fs: fw.for(hostOf()).fs,
+    dbus: fw.for(hostOf()).dbus,
     host: hostOf,
     capability(name, probe) {
       const key = `${hostOf()}:${name}`

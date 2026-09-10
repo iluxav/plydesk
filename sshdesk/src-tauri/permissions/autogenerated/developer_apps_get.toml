@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-developer-apps-get"
+description = "Enables the developer_apps_get command without any pre-configured scope."
+commands.allow = ["developer_apps_get"]
+
+[[permission]]
+identifier = "deny-developer-apps-get"
+description = "Denies the developer_apps_get command without any pre-configured scope."
+commands.deny = ["developer_apps_get"]

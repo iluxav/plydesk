@@ -1,12 +1,5 @@
-export const manifest = {
-  id: 'hello-local',
-  name: 'Hello Local',
-  description: 'A starting point for your own sshdesk app.',
-  version: '1.0.0',
-  icon: 'lucide:code-xml',
-  window: { w: 580, h: 380 },
-}
-
+// Identity, window size, and permissions live in manifest.json beside this
+// file. This module only builds the UI; it runs in the app's own view.
 export function createApp({ React, html, useFw }) {
   return function HelloLocal() {
     const fw = useFw()

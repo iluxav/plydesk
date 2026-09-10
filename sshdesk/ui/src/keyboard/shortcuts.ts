@@ -8,6 +8,7 @@ export const ACTIONS = [
   { id: 'next-window', label: 'Next window', group: 'Switch windows', shortcut: { code: 'Backquote', modifiers: META } },
   { id: 'previous-window', label: 'Previous window', group: 'Switch windows', shortcut: { code: 'Backquote', modifiers: META | SHIFT } },
   { id: 'minimize', label: 'Minimize window', group: 'Switch windows', shortcut: { code: 'KeyM', modifiers: META | ALT } },
+  { id: 'launcher', label: 'Search apps and files', group: 'Search', shortcut: { code: 'Space', modifiers: ALT } },
 ] as const
 export type ActionId = typeof ACTIONS[number]['id']
 export type KeyboardPreferences = { bindings: Record<ActionId, Shortcut | null>; captureSystem: boolean }
