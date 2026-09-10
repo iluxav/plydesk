@@ -83,9 +83,17 @@ jobs:
       # The npm CLI, not `cargo install tauri-cli`. That step compiled the CLI
       # from source on every run and took 414 of the job's 707 seconds; this
       # one is a prebuilt binary that npm ci has already fetched.
+      #
+      # The bundle's version comes from the tag, so a release can never ship
+      # an app that reports the previous number. Manual runs keep the file's.
       - name: Build
         working-directory: src-tauri
-        run: node ../ui/node_modules/@tauri-apps/cli/tauri.js build --target ${{ matrix.target }}
+        run: |
+          CONFIG='{}'
+          case "${GITHUB_REF_NAME}" in
+            v[0-9]*) CONFIG="{\"version\":\"${GITHUB_REF_NAME#v}\"}" ;;
+          esac
+          node ../ui/node_modules/@tauri-apps/cli/tauri.js build --target ${{ matrix.target }} --config "$CONFIG"
 
       # A --target build nests the output under the triple.
       - name: Package
@@ -139,10 +147,17 @@ jobs:
           echo "--- SHA256SUMS ---"
           cat SHA256SUMS
 
+      # Re-running a tag build after a partial failure must not fail on the
+      # release it already made: if one exists, its assets are replaced.
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            echo "release ${GITHUB_REF_NAME} exists; replacing its assets"
+            gh release upload "${GITHUB_REF_NAME}" dist/* --clobber
+            exit 0
+          fi
           gh release create "${GITHUB_REF_NAME}" \
             --title "plydesk ${GITHUB_REF_NAME}" \
             --notes "$(cat <<'NOTES'
