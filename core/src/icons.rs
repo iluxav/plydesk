@@ -67,7 +67,7 @@ pub struct Pack {
 
 pub fn packs_dir() -> std::path::PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-    std::path::Path::new(&home).join(".sshdesk/icons")
+    std::path::Path::new(&home).join(".plydesk/icons")
 }
 
 /// Strip anything active out of an SVG.

@@ -1,17 +1,17 @@
-# sshdesk — build & run
+# plydesk — build & run
 #
 # NOTE: Tauri embeds ui/index.html into the binary at build time.
 # Editing the HTML has no effect until you rebuild. Always use `make run`.
 
-BIN     := src-tauri/target/release/sshdesk
-PROBE   := core/target/release/sshdesk-probe
+BIN     := src-tauri/target/release/plydesk
+PROBE   := core/target/release/plydesk-probe
 HOST    ?= iluxa@10.168.168.226
 BUNDLE_FLAGS := --no-bundle
 
 # WebKit needs the regular app identity for VS Code's persistent browser data.
 # Running the loose Mach-O uses a different store and can fail IndexedDB writes.
 ifeq ($(shell uname -s),Darwin)
-BIN := src-tauri/target/release/bundle/macos/sshdesk.app/Contents/MacOS/sshdesk
+BIN := src-tauri/target/release/bundle/macos/plydesk.app/Contents/MacOS/plydesk
 BUNDLE_FLAGS := --bundles app
 endif
 
@@ -21,18 +21,18 @@ all: run
 
 ## run: rebuild (UI + Rust) and launch the app
 #
-# SSHDESK_PLUGINS points at the repo so edits here are picked up. A release
+# PLYDESK_PLUGINS points at the repo so edits here are picked up. A release
 # build launched from Finder reads the plugins bundled inside the .app instead.
 run: kill build
 	@$(MAKE) --no-print-directory launch
 
 launch:
 	@test -x "$(BIN)" || { echo "✗ app not built — run make run first"; exit 1; }
-	@echo "→ launching sshdesk"
-	@SSHDESK_PLUGINS="$(CURDIR)/plugins" "$(BIN)" > /tmp/sshdesk.log 2>&1 & \
+	@echo "→ launching plydesk"
+	@PLYDESK_PLUGINS="$(CURDIR)/plugins" "$(BIN)" > /tmp/plydesk.log 2>&1 & \
 		run_pid=$$!; sleep 2; kill -0 $$run_pid 2>/dev/null \
 		&& echo "✓ running — check your screen" \
-		|| { echo "✗ crashed:"; cat /tmp/sshdesk.log; exit 1; }
+		|| { echo "✗ crashed:"; cat /tmp/plydesk.log; exit 1; }
 
 ## lint-plugins: catch mistakes that are fatal at runtime
 #
@@ -80,12 +80,12 @@ ui-install:
 # App views fetch the runtime page from the Vite server through their own
 # origin, so they hot-reload too. Reload an app in Settings to pick up edits.
 dev: kill
-	@cd src-tauri && SSHDESK_PLUGINS=$(CURDIR)/plugins node ../ui/node_modules/@tauri-apps/cli/tauri.js dev
+	@cd src-tauri && PLYDESK_PLUGINS=$(CURDIR)/plugins node ../ui/node_modules/@tauri-apps/cli/tauri.js dev
 
 ## test: unit tests for core, the app runtime, and the desktop UI
 #
 # Live tests against a real machine are #[ignore]d; see the comments beside
-# them for the SSHDESK_TEST_HOST invocation.
+# them for the PLYDESK_TEST_HOST invocation.
 test:
 	@cargo test --manifest-path core/Cargo.toml
 	@cargo test --manifest-path src-tauri/Cargo.toml
@@ -100,15 +100,15 @@ probe:
 probe-sudo:
 	@cargo build --release --manifest-path core/Cargo.toml
 	@read -s -p "sudo password for $(HOST): " PW; echo; \
-		SSHDESK_PW="$$PW" $(PROBE) $(HOST)
+		PLYDESK_PW="$$PW" $(PROBE) $(HOST)
 
 ## restart: kill and relaunch without rebuilding
 restart: kill
 	@$(MAKE) --no-print-directory launch
 
-## kill: stop any running instance
+## kill: stop any running instance (including one built under the old name)
 kill:
-	@pkill -f 'release/(bundle/macos/sshdesk\.app/Contents/MacOS/)?sshdesk$$' 2>/dev/null || true
+	@pkill -f 'release/(bundle/macos/(plydesk|sshdesk)\.app/Contents/MacOS/)?(plydesk|sshdesk)$$' 2>/dev/null || true
 	@sleep 1
 
 ## clean: remove build artifacts and stale control sockets
@@ -116,7 +116,7 @@ clean: kill
 	@cargo clean --manifest-path src-tauri/Cargo.toml
 	@cargo clean --manifest-path core/Cargo.toml
 	@rm -rf ui/dist
-	@rm -f $(HOME)/.sshdesk-*.sock
+	@rm -f $(HOME)/.plydesk-*.sock
 	@echo "✓ cleaned"
 
 ## help: list targets

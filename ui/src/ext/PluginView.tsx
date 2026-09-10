@@ -20,7 +20,7 @@ function context(app: AppDef, host: string) {
   const seeds: Record<string,string> = {}
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i)!
-    if (key.startsWith(`sshdesk:${app.id}.`) || key.startsWith(`sshdesk:host:${host}:${app.id}.`)) seeds[key] = localStorage.getItem(key)!
+    if (key.startsWith(`plydesk:${app.id}.`) || key.startsWith(`plydesk:host:${host}:${app.id}.`)) seeds[key] = localStorage.getItem(key)!
   }
   return { css: buildCss([host], host), seeds }
 }
@@ -204,7 +204,7 @@ export function PluginView({ app, appProps, host, winId }: { app: AppDef; appPro
     <div ref={slot} className="app-runtime-slot">
       {loading && preview && !accepted ? <div className="app-access">
         <div className="app-access-heading"><span className="app-access-mark"><Icon id={app.icon} size={26} /></span><div><h2>Allow {preview.manifest.name} access?</h2><p>Version {preview.manifest.version} · {host}</p></div></div>
-        <p>This app requests the following access on this machine. Your approval is saved by SSHDesk before its code runs.</p>
+        <p>This app requests the following access on this machine. Your approval is saved by plydesk before its code runs.</p>
         <ul className="app-access-list">{preview.manifest.permissions.map(p => <li key={p}><strong>{ACCESS[p]?.[0] || p}</strong><p>{ACCESS[p]?.[1]}</p></li>)}</ul>
         <p className="app-access-source">Source: {app.plugin!.directory}</p>
         {preview.developer && <p>Developer app: approval also covers code edits in this folder. Changing manifest.json asks again.</p>}

@@ -1,5 +1,5 @@
 /**
- * sshdesk plugin: Ports
+ * plydesk plugin: Ports
  *
  * Shows what is listening on the remote, who owns it, and — the part no other
  * tool does — lets you tunnel a loopback-only port to your Mac in one click,

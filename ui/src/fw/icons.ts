@@ -10,7 +10,7 @@
  * lot of DOM for nothing. A symbol is created the first time something asks
  * for that icon and reused from then on.
  */
-const SPRITE_ID = 'sshdesk-icon-sprite'
+const SPRITE_ID = 'plydesk-icon-sprite'
 
 export interface IconPack { name: string; icons: Record<string, string>; bundled: boolean }
 
@@ -24,9 +24,9 @@ export function iconPacks(): IconPack[] { return packs }
 export function hasIcon(id: string): boolean { return byId.has(id) }
 export function iconCount(): number { return byId.size }
 
-/** `desk:folder` -> `sshdesk-icon-desk-folder` */
+/** `desk:folder` -> `plydesk-icon-desk-folder` */
 export function symbolId(id: string): string {
-  return 'sshdesk-icon-' + id.replace(':', '-')
+  return 'plydesk-icon-' + id.replace(':', '-')
 }
 
 /** Every id, pack order preserved so curated names come before the library. */

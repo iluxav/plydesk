@@ -1,5 +1,5 @@
 /**
- * sshdesk plugin: System
+ * plydesk plugin: System
  *
  * Shows only what implies a next action — failed units, reclaimable disk, swap
  * in use, VRAM held. Deliberately no CPU sparklines or network graphs: they

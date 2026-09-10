@@ -60,7 +60,7 @@ export function Connections({ onConnected, connected = [], onCancel }: {
       if (e.key === 'Escape' && onCancel && !busy) { e.preventDefault(); onCancel() }
     }}>
       <div className="connection-titlebar" data-tauri-drag-region>
-        <span>sshdesk</span><span className="connection-titlebar-label">Remote desktop</span>
+        <span>plydesk</span><span className="connection-titlebar-label">Remote desktop</span>
         {onCancel && <button className="subtle-button" onClick={onCancel} disabled={busy}>
           <Icon id="lucide:arrow-left" size={14} /> Back to desktop
         </button>}

@@ -4,7 +4,7 @@
 //!
 //! ```text
 //! defaults   every app's declared tokens (these live in the frontend)
-//! config     ~/.sshdesk/config.toml
+//! config     ~/.plydesk/config.toml
 //! ```
 //!
 //! This started out layered, with per-host overrides read over SFTP. That was
@@ -129,7 +129,7 @@ fn render_sections(flat: &Flat, prefix: &str) -> String {
         sections.entry(section).or_default().push((leaf, v.clone()));
     }
     let mut out = if prefix.is_empty() {
-        String::from("# sshdesk configuration\n\
+        String::from("# plydesk configuration\n\
                      # Written by Settings; safe to edit by hand.\n")
     } else {
         String::new()
@@ -231,9 +231,21 @@ pub fn sanitize(flat: Flat, origin: &str, warnings: &mut Vec<String>) -> Flat {
 
 // ---- storage ------------------------------------------------------------
 
-pub fn local_path() -> std::path::PathBuf {
+/// `~/.plydesk`, holding the config file, user-installed plugins, and icon
+/// packs. The app was called sshdesk until September 2026; a folder left by
+/// that name is renamed on first use so nothing the user set up is lost.
+pub fn data_dir() -> std::path::PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-    std::path::Path::new(&home).join(".sshdesk/config.toml")
+    let dir = std::path::Path::new(&home).join(".plydesk");
+    let legacy = std::path::Path::new(&home).join(".sshdesk");
+    if !dir.exists() && legacy.is_dir() {
+        if let Err(e) = std::fs::rename(&legacy, &dir) { eprintln!("plydesk: could not move {} to {}: {e}", legacy.display(), dir.display()); }
+    }
+    dir
+}
+
+pub fn local_path() -> std::path::PathBuf {
+    data_dir().join("config.toml")
 }
 
 pub fn read_local(warnings: &mut Vec<String>) -> Flat {

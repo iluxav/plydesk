@@ -1,7 +1,7 @@
 /**
- * sshdesk plugin: systemctl
+ * plydesk plugin: systemctl
  *
- * Convention: ~/.sshdesk/plugins/<name>/index.js exporting `manifest`,
+ * Convention: ~/.plydesk/plugins/<name>/index.js exporting `manifest`,
  * `createAdapter` and `createApp`.
  *
  * Ported to tier 1: reads go over D-Bus (typed both ways, no parsing, nothing
@@ -96,7 +96,7 @@ export function createAdapter(sdk) {
      * Still tier 3, and on purpose. The bus equivalent is refused by polkit
      * unless a pkttyagent is registered for this ssh session and the call sets
      * ALLOW_INTERACTIVE_AUTHORIZATION — machinery that would replace one line
-     * which already works. See sshdesk's dbus.rs for the full finding.
+     * which already works. See plydesk's dbus.rs for the full finding.
      */
     async action(verb, unit) {
       if (!ACTIONS.includes(verb)) throw new Error(`unknown action: ${verb}`)

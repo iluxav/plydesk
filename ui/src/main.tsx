@@ -1,3 +1,4 @@
+import './fw/migrate'   // first: renames stored preferences before anything reads them
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
@@ -16,7 +17,7 @@ document.addEventListener('contextmenu', e => {
 // Plugins register apps into the registry, so they must load before first
 // paint or the dock would render without them.
 loadPlugins()
-  .then(ids => { if (ids.length) console.info('sshdesk: loaded plugins', ids) })
+  .then(ids => { if (ids.length) console.info('plydesk: loaded plugins', ids) })
   .finally(() => {
     createRoot(document.getElementById('root')!).render(
       <StrictMode><App /></StrictMode>

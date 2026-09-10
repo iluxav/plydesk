@@ -6,7 +6,7 @@ export const ACCESS: Record<string, [string,string]> = {
   'remote.dbus': ['Access system services', 'Read and call remote D-Bus services, including methods that change system state.'],
   'remote.system': ['Read system information', 'Read processes, services, ports, and machine time.'],
   'remote.tunnels': ['Create SSH tunnels', 'Expose remote services on local ports while this app is open.'],
-  'desktop.openUrl': ['Open linked tools', 'Open its forwarded services in your browser or request another SSHDesk app.'],
+  'desktop.openUrl': ['Open linked tools', 'Open its forwarded services in your browser or request another plydesk app.'],
   'desktop.embed': ['Embed a remote web app', 'Display content from its SSH tunnels inside this window.'],
   'network': ['Access the network', 'Send and receive data over HTTP and WebSockets, including data this app can read.'],
 }

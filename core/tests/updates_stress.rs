@@ -3,10 +3,10 @@
 #[test]
 #[ignore]
 fn get_updates_survives_quiet_intervals() {
-    let target = std::env::var("SSHDESK_HOST").expect("set SSHDESK_HOST");
-    let mut h = sshdesk_core::Host::connect(&target).expect("connect");
+    let target = std::env::var("PLYDESK_HOST").expect("set PLYDESK_HOST");
+    let mut h = plydesk_core::Host::connect(&target).expect("connect");
     for i in 1..=12 {
-        match sshdesk_core::packagekit::list_updates(&mut h) {
+        match plydesk_core::packagekit::list_updates(&mut h) {
             Ok(u) => println!("  {i:>2}. {} updates", u.len()),
             Err(e) => panic!("run {i} failed: {e}"),
         }

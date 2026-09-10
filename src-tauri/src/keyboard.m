@@ -89,7 +89,7 @@ static void stopTap(void) {
 
 // Called exclusively on the AppKit main thread. The permission prompt is only
 // requested by the user's explicit Settings action, never on startup or focus.
-bool sshdesk_keyboard_configure(void *window, const char *json, ShortcutCallback callback) {
+bool plydesk_keyboard_configure(void *window, const char *json, ShortcutCallback callback) {
     desktopWindow = (__bridge NSWindow *)window;
     configuration = [NSJSONSerialization JSONObjectWithData:[[NSString stringWithUTF8String:json]
         dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil];
@@ -124,8 +124,8 @@ bool sshdesk_keyboard_configure(void *window, const char *json, ShortcutCallback
     }
     return eventTap && CGEventTapIsEnabled(eventTap);
 }
-bool sshdesk_keyboard_trusted(void) { return AXIsProcessTrusted(); }
-void sshdesk_keyboard_request_access(void) {
+bool plydesk_keyboard_trusted(void) { return AXIsProcessTrusted(); }
+void plydesk_keyboard_request_access(void) {
     AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)@{(__bridge NSString *)kAXTrustedCheckOptionPrompt: @YES});
     [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:@"x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"]];
 }

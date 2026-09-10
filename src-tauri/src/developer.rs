@@ -186,7 +186,7 @@ mod tests {
     use super::*;
     #[test]
     fn registrations_persist_and_removal_keeps_source() {
-        let root = std::env::temp_dir().join(format!("sshdesk-dev-test-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("plydesk-dev-test-{}", std::process::id()));
         let plugin = root.join("my app");
         fs::create_dir_all(&plugin).unwrap();
         fs::write(plugin.join("index.js"), "export const manifest = {}").unwrap();
@@ -213,7 +213,7 @@ mod tests {
     }
     #[test]
     fn invalid_settings_are_reported_instead_of_overwritten() {
-        let path = std::env::temp_dir().join(format!("sshdesk-dev-invalid-{}.json", std::process::id()));
+        let path = std::env::temp_dir().join(format!("plydesk-dev-invalid-{}.json", std::process::id()));
         fs::write(&path, "broken").unwrap();
         assert!(read_config(&path).is_err());
         fs::remove_file(path).unwrap();
@@ -221,7 +221,7 @@ mod tests {
     #[test]
     fn missing_entry_is_rejected() {
         assert!(app_directory("relative/path").is_err());
-        assert!(read_source("/nonexistent/sshdesk-test").is_err());
+        assert!(read_source("/nonexistent/plydesk-test").is_err());
     }
 }
 

@@ -9,7 +9,7 @@ and one place to change an icon or a colour so everything follows.
 
 ```
 defaults   every app's declared tokens (in code)
-config     ~/.sshdesk/config.toml
+config     ~/.plydesk/config.toml
 ```
 
 > **Reversed after first use.** This was originally layered, with per-host
@@ -69,7 +69,7 @@ all resolve to the default. Config is advisory and can never leave a hole.
 A pack is a directory of SVGs; the id is `pack:name`.
 
 ```
-~/.sshdesk/icons/lucide/folder.svg  →  "lucide:folder"
+~/.plydesk/icons/lucide/folder.svg  →  "lucide:folder"
 ```
 
 A default pack is compiled into the binary, so a fresh install renders with
@@ -134,7 +134,7 @@ Writes go through a Rust command, never the frontend directly, so validation
 happens once on the way in for both the UI and a hand-edited file.
 
 Settings that were written to a host before this reversal are migrated into the
-local file on sight; the leftover `~/.config/sshdesk/` on a remote is inert.
+local file on sight; the leftover `~/.config/plydesk/` on a remote is inert.
 
 Reload is explicit: Settings writes, re-reads, re-applies. No file watching —
 `inotify` has no bus API, and a polling loop is poor value for something that

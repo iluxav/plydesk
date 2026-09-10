@@ -11,7 +11,7 @@
  */
 import { declarations, resolve, type TokenType } from './tokens'
 
-const STYLE_ID = 'sshdesk-theme'
+const STYLE_ID = 'plydesk-theme'
 
 /** `desk.accent` -> `--color-desk-accent`, `files.row_hover` -> `--files-row-hover`. */
 function cssVar(appId: string, name: string): string {

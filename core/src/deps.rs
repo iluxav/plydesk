@@ -12,7 +12,7 @@
 //!                backend cannot map a *missing* file to a package (that needs
 //!                apt-file), so the names have to be declared. Verified, not
 //!                assumed: `what-provides /usr/bin/docker` returns nothing.
-//!   * `archive`  a tarball, unpacked under ~/.sshdesk/opt.
+//!   * `archive`  a tarball, unpacked under ~/.plydesk/opt.
 //!
 //! The archive kind is preferred wherever it fits, and not only because some
 //! software is not packaged: it installs into the user's own directory, so it
@@ -23,9 +23,9 @@ use crate::{shq, Error, Host, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-/// Everything sshdesk installs lives here, so it is all visible and removable
+/// Everything plydesk installs lives here, so it is all visible and removable
 /// in one place and never mixed in with what the machine's owner installed.
-pub const OPT_DIR: &str = ".sshdesk/opt";
+pub const OPT_DIR: &str = ".plydesk/opt";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
@@ -47,7 +47,7 @@ pub enum Requirement {
         /// arch -> sha256 of the download. Required: this fetches a binary and
         /// then runs it.
         sha256: BTreeMap<String, String>,
-        /// Directory name under ~/.sshdesk/opt.
+        /// Directory name under ~/.plydesk/opt.
         into: String,
         /// Path to the executable inside the unpacked tree.
         bin: String,
@@ -143,7 +143,12 @@ pub fn probe(h: &mut Host, reqs: &[Requirement]) -> Result<Vec<Status>> {
 
     // One script: for each requirement, print where its command is, looking
     // inside our own opt directory as well as $PATH.
-    let mut script = String::new();
+    //
+    // The app was called sshdesk until September 2026, and software it
+    // installed lives under that name on machines set up before then. Moving
+    // the directory here, before the first probe, keeps those installs.
+    let mut script = String::from(
+        "if [ -d \"$HOME/.sshdesk\" ] && [ ! -e \"$HOME/.plydesk\" ]; then mv \"$HOME/.sshdesk\" \"$HOME/.plydesk\"; fi >/dev/null 2>&1\n");
     for r in reqs {
         let c = r.command();
         if !sane_command(c) {
@@ -308,7 +313,7 @@ fn install_archive(
     Ok(format!("installed to ~/{OPT_DIR}/{into}"))
 }
 
-/// Remove something sshdesk installed. Only ever inside OPT_DIR.
+/// Remove something plydesk installed. Only ever inside OPT_DIR.
 pub fn remove_archive(h: &mut Host, into: &str) -> Result<String> {
     if !sane_dirname(into) { return Err(Error::Io(format!("unsafe directory: {into}"))) }
     let home = h.sftp()?.home()?;
@@ -318,7 +323,7 @@ pub fn remove_archive(h: &mut Host, into: &str) -> Result<String> {
     else { Err(Error::Remote { code: o.code, stderr: o.stderr }) }
 }
 
-/// What sshdesk has installed here, for a Settings panel to list and remove.
+/// What plydesk has installed here, for a Settings panel to list and remove.
 #[derive(Debug, Clone, Serialize)]
 pub struct Installed { pub name: String, pub size: u64 }
 

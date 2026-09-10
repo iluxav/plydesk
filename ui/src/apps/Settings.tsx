@@ -17,8 +17,8 @@ const PAGES = [
   { id: 'wallpaper', title: 'Wallpaper', icon: 'lucide:mountain', description: 'Make this machine’s workspace your own.' },
   { id: 'keyboard', title: 'Keyboard', icon: 'lucide:keyboard', description: 'Keyboard shortcuts, window snapping, and switching between apps.' },
   { id: 'apps', title: 'Apps & Extensions', icon: 'desk:app', description: 'Your desktop apps, including JavaScript extensions.' },
-  { id: 'tools', title: 'Remote Tools', icon: 'lucide:hard-drive', description: 'Supporting software installed by sshdesk on this machine.' },
-  { id: 'developer', title: 'Developer', icon: 'lucide:code-xml', description: 'Build, load, and reload local apps without rebuilding sshdesk.' },
+  { id: 'tools', title: 'Remote Tools', icon: 'lucide:hard-drive', description: 'Supporting software installed by plydesk on this machine.' },
+  { id: 'developer', title: 'Developer', icon: 'lucide:code-xml', description: 'Build, load, and reload local apps without rebuilding plydesk.' },
   { id: 'advanced', title: 'Advanced', icon: 'lucide:sliders-horizontal', description: 'Configuration and customization for this workspace.' },
 ]
 const ACCENTS = [
@@ -275,7 +275,7 @@ export function Settings({ setTitle }: { setTitle?: (title: string) => void }) {
         </> : activeApp ? <>
           <div className="settings-app-heading"><AppIcon app={activeApp} host={host} large /><div><h2>{activeApp.title}</h2>
             <span className="settings-app-kind">{activeApp.plugin ? 'JavaScript extension' : 'Built-in app'}</span>
-            <p>{activeApp.description || BUILTIN_DESCRIPTIONS[activeApp.id] || 'An app for your sshdesk workspace.'}</p></div>
+            <p>{activeApp.description || BUILTIN_DESCRIPTIONS[activeApp.id] || 'An app for your plydesk workspace.'}</p></div>
             {!activeApp.hidden && <button className="settings-button" onClick={() => fw.ui.open(activeApp.id, { host })}>Open app<Icon id="lucide:arrow-up-right" size={13} /></button>}</div>
           {activeApp.plugin && <AppAccess app={activeApp} />}
           <SettingsGroup title="Appearance">
@@ -302,16 +302,16 @@ export function Settings({ setTitle }: { setTitle?: (title: string) => void }) {
             <button className="settings-button" disabled={busy} onClick={() => void loadTools()}><Icon id="lucide:rotate-cw" size={13} />Refresh</button></div>
           {toolsError ? <div className="settings-inline-error" role="alert">{toolsError}</div> : tools === null ? <div className="settings-loading" role="status"><span className="ui-spinner" />Reading installed tools…</div>
             : tools.length === 0 ? <div className="settings-empty"><Icon id="lucide:package" size={32} /><strong>No supporting tools installed</strong><p>Apps that need extra software will guide you through setup.</p></div>
-            : <SettingsGroup title="Installed by sshdesk">{tools.map(tool => <SettingsRow key={tool.name} label={tool.name} description={fw.fmt.size(tool.size)}>
+            : <SettingsGroup title="Installed by plydesk">{tools.map(tool => <SettingsRow key={tool.name} label={tool.name} description={fw.fmt.size(tool.size)}>
               <button className="settings-button" disabled={busy} onClick={async () => {
-                if (!await dialog.confirm({ title: `Remove ${tool.name}?`, message: `This permanently removes ~/.sshdesk/opt/${tool.name} and all its contents from ${machineName}, including any app data in that folder. Apps that use it may need setup again.`, okLabel: 'Remove', danger: true })) return
+                if (!await dialog.confirm({ title: `Remove ${tool.name}?`, message: `This permanently removes ~/.plydesk/opt/${tool.name} and all its contents from ${machineName}, including any app data in that folder. Apps that use it may need setup again.`, okLabel: 'Remove', danger: true })) return
                 setPending(n => n + 1); setError(''); setNote('')
                 try { await fw.deps.remove(tool.name); await loadTools(); setNote(`${tool.name} removed`) }
                 catch (e) { setError(String(e)) } finally { setPending(n => n - 1) }
               }}>Remove…</button>
             </SettingsRow>)}</SettingsGroup>}
           <button className="settings-link-row" onClick={() => fw.ui.open('packages', { host })}><Icon id="lucide:package" size={17} /><span>Manage system packages</span><Icon id="lucide:arrow-up-right" size={14} /></button>
-          <p className="settings-footnote">Supporting tools live in <code>~/.sshdesk/opt</code> on this machine. Desktop extensions live on your Mac.</p>
+          <p className="settings-footnote">Supporting tools live in <code>~/.plydesk/opt</code> on this machine. Desktop extensions live on your Mac.</p>
         </> : section === 'advanced' ? <>
           <SettingsGroup title="Configuration">
             <SettingsRow label="Applies to" description={host}><span className="settings-secondary">{machineName}</span></SettingsRow>
@@ -337,13 +337,13 @@ export function Settings({ setTitle }: { setTitle?: (title: string) => void }) {
     {installHelp && <SettingsModal title="Add a JavaScript extension" onClose={() => setInstallHelp(false)} wide>
       <div className="settings-modal-body settings-extension-guide">
         <p>Extensions add apps to your desktop. Each app lives in its own folder on this Mac.</p>
-        <ol><li><strong>Add the app folder</strong><span>Place its files in:</span><code>~/.sshdesk/plugins/my-app/</code></li>
+        <ol><li><strong>Add the app folder</strong><span>Place its files in:</span><code>~/.plydesk/plugins/my-app/</code></li>
           <li><strong>Include an entry file</strong><span>The folder needs an <code>index.js</code> file that exports a manifest and <code>createApp</code>. Include <code>style.css</code> for app styles.</span></li>
           <li><strong>Reload extensions</strong><span>Return to Apps & Extensions and choose Reload extensions. The app appears in your dock and in Settings.</span></li></ol>
         <details className="settings-technical"><summary>For app developers</summary>
           <p>Optional manifest fields <code>description</code>, <code>version</code>, and <code>author</code> appear in app details. Declare icon, color, image, and length preferences in <code>manifest.tokens</code>; Settings builds the controls for you.</p>
         </details>
-        <p className="settings-footnote">Only add extensions you trust. They run inside sshdesk and can access your connected machines.</p>
+        <p className="settings-footnote">Only add extensions you trust. They run inside plydesk and can access your connected machines.</p>
       </div><footer><button className="settings-button is-primary" onClick={() => setInstallHelp(false)}>Done</button></footer>
     </SettingsModal>}
   </div>
@@ -358,7 +358,7 @@ function DesktopPreview({ host, wallpaper, large = false }: { host: string; wall
   return <div className={`settings-desktop-preview ${large ? 'is-large' : ''}`} aria-label="Desktop preview"
     style={{ backgroundColor: value('bg'), backgroundImage: wallpaper ? `url(${wallpaper})` : undefined }}>
     <div className="settings-preview-tint" style={{ background: value('tint') }} />
-    <div className="settings-preview-menubar" style={{ background: value('menubar'), color: value('fg') }}><strong>sshdesk</strong><span>Desktop preview</span></div>
+    <div className="settings-preview-menubar" style={{ background: value('menubar'), color: value('fg') }}><strong>plydesk</strong><span>Desktop preview</span></div>
     <div className="settings-preview-window" style={{ background: value('panel'), borderColor: value('border'), borderRadius: value('radius') }}>
       <div className="settings-preview-title" style={{ background: value('titlebar'), borderColor: value('line') }}><i /><i /><i /><span style={{ color: value('fg') }}>Files</span></div>
       <div className="settings-preview-body"><div style={{ borderColor: value('line') }}><span style={{ background: value('selection'), color: value('fg') }}>Home</span><span style={{ color: value('dim') }}>Documents</span></div>

@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "sshdesk",
+  "productName": "plydesk",
   "version": "0.1.5",
-  "identifier": "dev.sshdesk.spike",
+  "identifier": "dev.plydesk.app",
   "build": {
     "frontendDist": "../ui/dist",
     "devUrl": "http://localhost:5173",
@@ -13,7 +13,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "sshdesk",
+        "title": "plydesk",
         "width": 1280,
         "height": 820,
         "maximized": true,

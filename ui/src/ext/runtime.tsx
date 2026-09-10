@@ -1,4 +1,5 @@
 /* eslint-disable react-refresh/only-export-components -- Standalone native webview entry, not a refreshable module. */
+import '../fw/migrate'   // first: renames stored preferences before anything reads them
 import * as React from 'react'
 import { createRoot } from 'react-dom/client'
 import htm from 'htm'
@@ -42,7 +43,7 @@ function context(value: { css?: string; seeds?: Record<string,string> }) {
     try { if (localStorage.getItem(key) === null) localStorage.setItem(key, entry) } catch { /* platform storage may be unavailable */ }
   }
 }
-window.addEventListener('sshdesk:runtime', ((event: CustomEvent) => {
+window.addEventListener('plydesk:runtime', ((event: CustomEvent) => {
   const { kind, payload } = event.detail
   if (kind === 'context') context(payload)
   if (kind === 'reply') { pending.get(payload.id)?.(payload.value); pending.delete(payload.id) }

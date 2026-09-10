@@ -252,7 +252,7 @@ function makeApi(getHost: () => string) {
      * The sudo password for this host, asked for once and held in memory only.
      *
      * Core apps need this the same way plugins do. It is never written
-     * anywhere; closing sshdesk forgets it, and so does disconnecting.
+     * anywhere; closing plydesk forgets it, and so does disconnecting.
      */
     sudoPassword: async (why?: string): Promise<string | null> => {
       const host = getHost()
@@ -336,11 +336,11 @@ function makeApi(getHost: () => string) {
   /** Small persisted key/value store for app preferences (localStorage). */
   prefs: {
     get<T>(key: string, fallback: T): T {
-      try { const v = localStorage.getItem('sshdesk:' + key); return v ? JSON.parse(v) as T : fallback }
+      try { const v = localStorage.getItem('plydesk:' + key); return v ? JSON.parse(v) as T : fallback }
       catch { return fallback }
     },
     set(key: string, value: unknown) {
-      try { localStorage.setItem('sshdesk:' + key, JSON.stringify(value)) } catch { /* quota */ }
+      try { localStorage.setItem('plydesk:' + key, JSON.stringify(value)) } catch { /* quota */ }
     },
 
     /**
@@ -356,16 +356,16 @@ function makeApi(getHost: () => string) {
      */
     hostGet<T>(key: string, fallback: T, seed?: string): T {
       const scoped = `host:${getHost()}:${key}`
-      const raw = localStorage.getItem('sshdesk:' + scoped)
+      const raw = localStorage.getItem('plydesk:' + scoped)
       if (raw !== null) {
         try { return JSON.parse(raw) as T } catch { return fallback }
       }
       if (seed) {
-        const old = localStorage.getItem('sshdesk:' + seed)
+        const old = localStorage.getItem('plydesk:' + seed)
         if (old !== null) {
           try {
             const v = JSON.parse(old) as T
-            localStorage.setItem('sshdesk:' + scoped, old)
+            localStorage.setItem('plydesk:' + scoped, old)
             return v
           } catch { /* fall through */ }
         }
@@ -374,7 +374,7 @@ function makeApi(getHost: () => string) {
     },
     hostSet(key: string, value: unknown) {
       try {
-        localStorage.setItem(`sshdesk:host:${getHost()}:${key}`, JSON.stringify(value))
+        localStorage.setItem(`plydesk:host:${getHost()}:${key}`, JSON.stringify(value))
       } catch { /* quota */ }
     },
   },
@@ -411,7 +411,7 @@ function makeApi(getHost: () => string) {
   /** Read a local image as a data URL, for the desktop picture. */
   wallpaper: (path: string) => invoke<string>('wallpaper_data', { path }),
 
-  /** The sshdesk window itself. */
+  /** The plydesk window itself. */
   win: {
     minimize: async () => {
       const { getCurrentWindow } = await import('@tauri-apps/api/window')

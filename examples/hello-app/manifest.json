@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "hello-local",
   "name": "Hello Local",
-  "description": "A starting point for your own sshdesk app.",
+  "description": "A starting point for your own plydesk app.",
   "version": "1.0.0",
   "icon": "lucide:code-xml",
   "window": {

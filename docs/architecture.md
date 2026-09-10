@@ -1,6 +1,6 @@
 # Architecture
 
-How sshdesk is put together, what was measured, and what is still open. The
+How plydesk is put together, what was measured, and what is still open. The
 product overview and install steps are in the [README](../README.md).
 
 The idea it proves: **a local GUI that drives real Linux boxes over plain SSH,
@@ -26,7 +26,7 @@ make help    # all targets
 **Tauri embeds `ui/index.html` into the binary at build time.** Editing the HTML has
 no effect until you rebuild — always use `make run`, never just relaunch the binary.
 
-On macOS, `make run` builds and launches `src-tauri/target/release/bundle/macos/sshdesk.app`.
+On macOS, `make run` builds and launches `src-tauri/target/release/bundle/macos/plydesk.app`.
 `make restart` uses the same app bundle, so embedded apps such as VS Code keep the
 same browser profile. Launch this bundle when testing saved settings; the loose
 executable and copies with a different bundle identifier use separate WebKit data.
@@ -51,9 +51,9 @@ Hold the switch shortcut's modifier to browse recent windows, then release to
 select. Escape cancels. Minimized windows and windows on other connected machines
 are included. Layout actions also appear in the Window menu.
 
-For **Command-Tab**, choose **Use ⌘Tab** in Keyboard settings and allow sshdesk in
+For **Command-Tab**, choose **Use ⌘Tab** in Keyboard settings and allow plydesk in
 **macOS System Settings → Privacy & Security → Accessibility**. The native input
-layer intercepts assigned combinations only while sshdesk's main window is focused;
+layer intercepts assigned combinations only while plydesk's main window is focused;
 clicking outside returns control to macOS. Capture is off by default. Normal
 desktop shortcuts use an app-local monitor and do not require Accessibility access.
 Command-Q and Command-Option-Escape remain available. No keystrokes are logged.
@@ -64,11 +64,11 @@ Run the keyboard and window-layout checks with Node 24:
 ## Apps are isolated
 
 Extension apps (Ports, Services, System, VS Code, and anything under
-`~/.sshdesk/plugins` or a Developer-mode folder) do not run in the desktop
+`~/.plydesk/plugins` or a Developer-mode folder) do not run in the desktop
 page. Each window gets its own native webview on a private origin, and the
 only thing it can reach is a Rust gateway that checks every request against
 the app's `manifest.json` permissions and the machine the window was opened
-on. The first time an app opens on a machine, sshdesk lists what it asks for
+on. The first time an app opens on a machine, plydesk lists what it asks for
 and waits for your approval before running its code; approvals are per app
 and per machine, and can be revoked in **Settings → Apps & Extensions**.
 [plugins/README.md](../plugins/README.md) has the permission list and the
@@ -125,7 +125,7 @@ Against a real Ubuntu Pi (systemd 257, OpenSSH 10.0p2), via `core/src/bin/probe.
 - D-Bus 4.5 ms vs shell-plus-spawn 9.2 ms on the same box
 
 ```sh
-./core/target/release/sshdesk-probe iluxa@10.168.168.226
+./core/target/release/plydesk-probe iluxa@10.168.168.226
 ```
 
 ## Design notes

@@ -1,5 +1,5 @@
 // src/adapter.js
-var SEP = "__SSHDESK_SECTION__";
+var SEP = "__PLYDESK_SECTION__";
 var OVERVIEW = [
   "df -PB1 -x tmpfs -x devtmpfs -x squashfs 2>/dev/null",
   `echo ${SEP}`,

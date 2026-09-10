@@ -23,7 +23,7 @@ export function KeyboardSettings() {
     return save({ ...preferences, bindings: { ...preferences.bindings, [id]: shortcut } })
   }
   const requestAccess = async () => {
-    try { await invoke('keyboard_request_access'); setMessage('Enable sshdesk in macOS Accessibility, then return here.'); refresh() }
+    try { await invoke('keyboard_request_access'); setMessage('Enable plydesk in macOS Accessibility, then return here.'); refresh() }
     catch (e) { setError(String(e)) }
   }
   const setCapture = (enabled: boolean) => {
@@ -53,9 +53,9 @@ export function KeyboardSettings() {
           disabled={equalShortcut(preferences.bindings[action.id], action.shortcut)} onClick={() => assign(action.id, { ...action.shortcut })}><Icon id="lucide:rotate-ccw" size={13} /></button>
       </SettingsRow>)}
     </SettingsGroup>)}
-    {status.native && <SettingsGroup title="macOS shortcuts" description="Allow assigned shortcuts such as Command-Tab to control sshdesk while its window is focused.">
+    {status.native && <SettingsGroup title="macOS shortcuts" description="Allow assigned shortcuts such as Command-Tab to control plydesk while its window is focused.">
       <SettingsRow label="Capture macOS shortcuts" description={preferences.captureSystem
-        ? status.captureReady ? 'Active while sshdesk is focused.' : status.accessibility ? 'Capture is paused. Return to the desktop or retry.' : 'Accessibility permission is needed.'
+        ? status.captureReady ? 'Active while plydesk is focused.' : status.accessibility ? 'Capture is paused. Return to the desktop or retry.' : 'Accessibility permission is needed.'
         : 'Shortcuts reserved by macOS remain with macOS.'}>
         <input type="checkbox" role="switch" className="shortcut-toggle" aria-label="Capture macOS shortcuts" checked={preferences.captureSystem}
           onChange={e => setCapture(e.target.checked)} />
@@ -63,12 +63,12 @@ export function KeyboardSettings() {
       <SettingsRow label="Use Command-Tab for window switching" description="Sets next window to ⌘Tab and previous window to ⇧⌘Tab.">
         <button className="settings-button" onClick={useCommandTab}>Use ⌘Tab</button>
       </SettingsRow>
-      {preferences.captureSystem && !status.accessibility && <SettingsRow label="Allow access in macOS" description="Enable sshdesk under System Settings → Privacy & Security → Accessibility.">
+      {preferences.captureSystem && !status.accessibility && <SettingsRow label="Allow access in macOS" description="Enable plydesk under System Settings → Privacy & Security → Accessibility.">
         <button className="settings-button" onClick={() => void requestAccess()}>Open Accessibility…</button>
       </SettingsRow>}
       {preferences.captureSystem && status.accessibility && !status.captureReady && <SettingsRow label="Refresh shortcut capture"><button className="settings-button" onClick={refresh}>Retry</button></SettingsRow>}
     </SettingsGroup>}
-    <p className="settings-footnote">Only assigned combinations are intercepted. Other keys keep working in your apps, including VS Code. Click outside sshdesk to return keyboard control to macOS. Command-Q and the macOS Force Quit shortcut stay available.</p>
+    <p className="settings-footnote">Only assigned combinations are intercepted. Other keys keep working in your apps, including VS Code. Click outside plydesk to return keyboard control to macOS. Command-Q and the macOS Force Quit shortcut stay available.</p>
     <div className="settings-app-toolbar"><button className="settings-button" onClick={() => save(defaults())}>Restore default shortcuts</button>
       <span className="settings-secondary" role="status">{message}</span></div>
     {(error || nativeError) && <p className="shortcut-error" role="alert">{error || nativeError}</p>}

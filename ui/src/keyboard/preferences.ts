@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react'
 import { parsePreferences, type KeyboardPreferences } from './shortcuts'
 
-const KEY = 'sshdesk.keyboard.v1'
+const KEY = 'plydesk.keyboard.v1'
 let preferences = parsePreferences(null)
 try { preferences = parsePreferences(localStorage.getItem(KEY)) } catch { /* Settings reports write errors when the user saves. */ }
 const listeners = new Set<() => void>()

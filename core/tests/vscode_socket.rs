@@ -1,4 +1,4 @@
-use sshdesk_core::Host;
+use plydesk_core::Host;
 
 /// The whole VS Code path as the plugin runs it: start on a unix socket,
 /// forward it to a local TCP port, and fetch the workbench.
@@ -9,10 +9,10 @@ use sshdesk_core::Host;
 #[test]
 #[ignore]
 fn vscode_serves_over_a_forwarded_socket() {
-    let target = std::env::var("SSHDESK_HOST").expect("SSHDESK_HOST");
+    let target = std::env::var("PLYDESK_HOST").expect("PLYDESK_HOST");
     let mut h = Host::connect(&target).expect("connect");
 
-    let opt = "$HOME/.sshdesk/opt";
+    let opt = "$HOME/.plydesk/opt";
     let start = format!(r#"
     set -e
     umask 077

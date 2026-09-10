@@ -47,7 +47,7 @@ export function DeveloperSettings() {
     setChoosing(true); setLoadError('')
     try {
       const { open } = await import('@tauri-apps/plugin-dialog')
-      const selected = await open({ title: 'Choose a local sshdesk app', directory: true, multiple: false })
+      const selected = await open({ title: 'Choose a local plydesk app', directory: true, multiple: false })
       if (typeof selected === 'string') setPath(selected)
     } catch (e) { setLoadError(String(e)) }
     finally { setChoosing(false) }
@@ -69,7 +69,7 @@ export function DeveloperSettings() {
             await change({ op: 'mode', enabled: !config.enabled })
           }}><span /></button>
       </SettingsRow>
-      <SettingsRow label="Developer tools" description="Inspect the SSHDesk desktop. Each running app has its own inspector below.">
+      <SettingsRow label="Developer tools" description="Inspect the plydesk desktop. Each running app has its own inspector below.">
         <button className="settings-button" disabled={!ready || !config.enabled || busy || openingTools}
           onClick={() => void openDevTools()}><Icon id="lucide:bug" size={14} />{openingTools ? 'Opening…' : 'Open DevTools'}</button>
       </SettingsRow>
@@ -87,7 +87,7 @@ export function DeveloperSettings() {
         <span className="developer-empty-icon"><Icon id="lucide:code-xml" size={26} /></span>
         <strong>Your next app starts here</strong>
         <p>Choose a folder containing <code>manifest.json</code>, <code>index.js</code>, and an optional <code>style.css</code>. Your app will join the desktop and dock.</p>
-        <span>No sshdesk rebuild needed.</span>
+        <span>No plydesk rebuild needed.</span>
       </div> : <div className="developer-app-list">
         {config.apps.map(entry => {
           const current = runtime[entry.directory]
@@ -137,7 +137,7 @@ export function DeveloperSettings() {
     </>}
     {adding && <SettingsModal title="Load local app" onClose={() => { if (!busy && !choosing) setAdding(false) }} wide>
       <div className="settings-modal-body">
-        <p className="developer-load-description">Choose your app’s folder on this Mac. sshdesk remembers this location and reads your code directly from it.</p>
+        <p className="developer-load-description">Choose your app’s folder on this Mac. plydesk remembers this location and reads your code directly from it.</p>
         <label className="settings-editor-field" htmlFor="developer-app-folder">App folder</label>
         <div className="developer-folder-input"><input id="developer-app-folder" data-autofocus value={path} placeholder="~/Projects/my-app" spellCheck={false}
           disabled={busy || choosing} onChange={e => setPath(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && path.trim() && !busy) void add() }} />

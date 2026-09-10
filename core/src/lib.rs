@@ -368,7 +368,7 @@ fn control_path(target: &str) -> String {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
     let safe: String = target.chars().map(|c| if c.is_alphanumeric() { c } else { '_' }).collect();
     // Keep well under the ~104 byte unix socket path limit.
-    format!("{home}/.sshdesk-{safe}.sock")
+    format!("{home}/.plydesk-{safe}.sock")
 }
 
 /// Local endpoint for the forwarded system bus. Same length discipline as
@@ -376,7 +376,7 @@ fn control_path(target: &str) -> String {
 fn bus_socket_path(target: &str) -> String {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
     let safe: String = target.chars().map(|c| if c.is_alphanumeric() { c } else { '_' }).collect();
-    format!("{home}/.sshdesk-bus-{safe}.sock")
+    format!("{home}/.plydesk-bus-{safe}.sock")
 }
 
 fn ensure_master(target: &str, ctl: &str, password: Option<&str>) -> Result<()> {
@@ -440,7 +440,7 @@ struct AskPass { dir: std::path::PathBuf, script: std::path::PathBuf }
 impl AskPass {
     fn new(password: &str) -> Result<AskPass> {
         use std::os::unix::fs::PermissionsExt;
-        let base = std::env::temp_dir().join(format!("sshdesk-{}-{}", std::process::id(), now_nanos()));
+        let base = std::env::temp_dir().join(format!("plydesk-{}-{}", std::process::id(), now_nanos()));
         std::fs::create_dir_all(&base).map_err(|e| Error::Io(e.to_string()))?;
         std::fs::set_permissions(&base, std::fs::Permissions::from_mode(0o700))
             .map_err(|e| Error::Io(e.to_string()))?;
@@ -885,13 +885,13 @@ pub fn server_time(h: &mut Host) -> Result<ServerTime> {
 mod live_tests {
     use super::*;
 
-    /// SSHDESK_TEST_HOST=user@host cargo test --manifest-path core/Cargo.toml live_ -- --ignored --nocapture
+    /// PLYDESK_TEST_HOST=user@host cargo test --manifest-path core/Cargo.toml live_ -- --ignored --nocapture
     #[test]
     #[ignore]
     fn live_folder_copy_download_and_upload() {
-        let target = std::env::var("SSHDESK_TEST_HOST").expect("SSHDESK_TEST_HOST=user@host");
+        let target = std::env::var("PLYDESK_TEST_HOST").expect("PLYDESK_TEST_HOST=user@host");
         let mut h = Host::connect(&target).unwrap();
-        let base = format!("/tmp/sshdesk-test-{}", std::process::id());
+        let base = format!("/tmp/plydesk-test-{}", std::process::id());
         let src = format!("{base}/src");
         mkdir(&mut h, &base).unwrap();
         mkdir(&mut h, &src).unwrap();
@@ -899,8 +899,8 @@ mod live_tests {
         write_file(&mut h, &format!("{src}/a.txt"), "alpha").unwrap();
         write_file(&mut h, &format!("{src}/nested/b.txt"), "beta").unwrap();
 
-        let local = std::env::temp_dir().join(format!("sshdesk-test-{}", std::process::id()));
-        let stamp = format!("sshdesk-test-{}", std::process::id());
+        let local = std::env::temp_dir().join(format!("plydesk-test-{}", std::process::id()));
+        let stamp = format!("plydesk-test-{}", std::process::id());
         let home = resolve_path(&mut h, "~").unwrap();
         let home_copy = format!("~/{stamp}");
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {

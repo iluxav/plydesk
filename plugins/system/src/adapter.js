@@ -1,6 +1,6 @@
 // No '#': in sh, a word starting with '#' begins a comment, and since these
 // commands are joined with ';' on one line it would swallow everything after it.
-const SEP = '__SSHDESK_SECTION__'
+const SEP = '__PLYDESK_SECTION__'
 
 /**
  * One shell invocation for the whole overview.

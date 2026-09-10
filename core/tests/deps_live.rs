@@ -1,4 +1,4 @@
-use sshdesk_core::{deps, Host};
+use plydesk_core::{deps, Host};
 use std::collections::BTreeMap;
 
 fn req(sha: &str) -> deps::Requirement {
@@ -18,12 +18,12 @@ fn req(sha: &str) -> deps::Requirement {
 
 /// Opt-in: needs a reachable host and the network.
 ///
-///     SSHDESK_HOST=user@box cargo test --test deps_live -- --ignored --nocapture
+///     PLYDESK_HOST=user@box cargo test --test deps_live -- --ignored --nocapture
 #[test]
 #[ignore]
 fn archive_install_verifies_before_it_unpacks() {
-    let target = std::env::var("SSHDESK_HOST")
-        .expect("set SSHDESK_HOST=user@box to run this");
+    let target = std::env::var("PLYDESK_HOST")
+        .expect("set PLYDESK_HOST=user@box to run this");
     let mut h = Host::connect(&target).expect("connect");
 
     // Wrong checksum must be refused, and must leave nothing behind.

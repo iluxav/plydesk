@@ -1,4 +1,4 @@
-use sshdesk_core::Host;
+use plydesk_core::Host;
 
 /// Runs the plugin's start script through the same path `sdk.exec` uses:
 /// run_argv -> run -> subshell. `nohup ... &` inside a subshell is exactly the
@@ -6,10 +6,10 @@ use sshdesk_core::Host;
 #[test]
 #[ignore]
 fn the_server_starts_and_reports_a_url() {
-    let target = std::env::var("SSHDESK_HOST").expect("SSHDESK_HOST");
+    let target = std::env::var("PLYDESK_HOST").expect("PLYDESK_HOST");
     let mut h = Host::connect(&target).expect("connect");
 
-    let opt = "$HOME/.sshdesk/opt";
+    let opt = "$HOME/.plydesk/opt";
     let log = format!("{opt}/openvscode.log");
     let pid = format!("{opt}/openvscode.pid");
     let start = format!(r#"
@@ -67,8 +67,8 @@ fn the_server_starts_and_reports_a_url() {
 #[test]
 #[ignore]
 fn framing_survives_hostile_output() {
-    let target = std::env::var("SSHDESK_HOST").expect("SSHDESK_HOST");
-    let mut h = sshdesk_core::Host::connect(&target).expect("connect");
+    let target = std::env::var("PLYDESK_HOST").expect("PLYDESK_HOST");
+    let mut h = plydesk_core::Host::connect(&target).expect("connect");
 
     // No trailing newline: this used to glue the marker onto the last line.
     let o = h.run("printf '403'").expect("run");

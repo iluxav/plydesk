@@ -1,11 +1,11 @@
 //! Headless verification of the typed lanes against a real host.
 //!
-//!   cargo run --release --bin sshdesk-probe -- user@host
+//!   cargo run --release --bin plydesk-probe -- user@host
 //!
 //! Asserts by content, not exit code. Everything it creates lives under one
 //! temporary directory on the remote and is removed before it returns.
 
-use sshdesk_core::*;
+use plydesk_core::*;
 use std::time::{Duration, Instant};
 
 macro_rules! ok {
@@ -26,7 +26,7 @@ thread_local!(static FAILURES: std::cell::RefCell<Vec<String>> =
 
 fn main() {
     let target = std::env::args().nth(1).unwrap_or_else(|| {
-        eprintln!("usage: sshdesk-probe user@host");
+        eprintln!("usage: plydesk-probe user@host");
         std::process::exit(2);
     });
 
@@ -35,7 +35,7 @@ fn main() {
     // is broken". Those look identical from inside the UI.
     let watch = std::env::args().any(|a| a == "--watch");
 
-    println!("\n\x1b[1msshdesk probe → {target}\x1b[0m");
+    println!("\n\x1b[1mplydesk probe → {target}\x1b[0m");
     let t0 = Instant::now();
     let mut h = match Host::connect(&target) {
         Ok(h) => h,
@@ -155,7 +155,7 @@ fn probe_sftp(h: &mut Host) -> Option<String> {
         Err(e) => bad!("resolve_path: {e}"),
     }
 
-    let dir = format!("{home}/.sshdesk-probe");
+    let dir = format!("{home}/.plydesk-probe");
     let _ = remove(h, &dir, true);
     if let Err(e) = mkdir(h, &dir) { bad!("mkdir: {e}"); return None }
     ok!("mkdir {dir}");
@@ -227,7 +227,7 @@ fn probe_trees(h: &mut Host) {
     let home = match h.sftp().and_then(|s| s.home()) {
         Ok(v) => v, Err(e) => { bad!("home: {e}"); return }
     };
-    let remote = format!("{home}/.sshdesk-tree");
+    let remote = format!("{home}/.plydesk-tree");
     let _ = remove(h, &remote, true);
 
     if let Err(e) = mkdir(h, &remote) { bad!("mkdir: {e}"); return }
@@ -235,7 +235,7 @@ fn probe_trees(h: &mut Host) {
     let _ = write_file(h, &format!("{remote}/top.txt"), "top\n");
     let _ = write_file(h, &format!("{remote}/sub/deep.txt"), "deep \u{2014} \u{fc}n\u{ef}c\u{f6}d\u{e9}\n");
 
-    let local = std::env::temp_dir().join("sshdesk-probe-tree");
+    let local = std::env::temp_dir().join("plydesk-probe-tree");
     let _ = std::fs::remove_dir_all(&local);
 
     match h.sftp().and_then(|s| s.download_tree(&remote, &local)) {
@@ -249,7 +249,7 @@ fn probe_trees(h: &mut Host) {
         Err(e) => bad!("nested file missing: {e}"),
     }
 
-    let back = format!("{home}/.sshdesk-tree-back");
+    let back = format!("{home}/.plydesk-tree-back");
     let _ = remove(h, &back, true);
     match h.sftp().and_then(|s| s.upload_tree(&local, &back)) {
         Ok(r) => ok!("upload_tree pushed {} bytes, {} skipped", r.bytes, r.skipped.len()),
@@ -270,7 +270,7 @@ fn probe_trees(h: &mut Host) {
 /// The config file, including that a hostile value is dropped without taking
 /// the rest of the file with it.
 fn probe_config(_h: &mut Host) {
-    use sshdesk_core::config;
+    use plydesk_core::config;
 
     let path = config::local_path();
     let backup = std::fs::read_to_string(&path).ok();
@@ -311,7 +311,7 @@ fn probe_config(_h: &mut Host) {
 /// PackageKit reads. Filter constants are a bitfield of `1 << PkFilterEnum`,
 /// which is exactly the sort of thing that is silently wrong until asserted.
 fn probe_packages(h: &mut Host) {
-    use sshdesk_core::packagekit as pk;
+    use plydesk_core::packagekit as pk;
 
     match pk::backend(h) {
         Ok(b) => ok!("backend = {b}"),
@@ -379,7 +379,7 @@ fn probe_binary(h: &mut Host) {
     let home = match h.sftp().and_then(|s| s.home()) {
         Ok(v) => v, Err(e) => { bad!("home: {e}"); return }
     };
-    let remote = sshdesk_core::sftp::join(&home, ".sshdesk-probe.png");
+    let remote = plydesk_core::sftp::join(&home, ".plydesk-probe.png");
 
     // A 1x1 PNG, small enough to inline and still a genuine decodable file.
     const PNG: &[u8] = &[
@@ -389,13 +389,13 @@ fn probe_binary(h: &mut Host) {
         0x0d,0x0a,0x2d,0xb4, 0,0,0,0,0x49,0x45,0x4e,0x44,0xae,0x42,0x60,0x82,
     ];
 
-    let local = std::env::temp_dir().join("sshdesk-probe.png");
+    let local = std::env::temp_dir().join("plydesk-probe.png");
     if std::fs::write(&local, PNG).is_err() { bad!("could not stage a local png"); return }
     if let Err(e) = h.sftp().and_then(|s| s.upload(&local.to_string_lossy(), &remote)) {
         bad!("upload: {e}"); return
     }
 
-    match sshdesk_core::mime_of(&remote) {
+    match plydesk_core::mime_of(&remote) {
         "image/png" => ok!("mime_of routes it to the viewer"),
         other => bad!("mime_of said {other}"),
     }
@@ -407,7 +407,7 @@ fn probe_binary(h: &mut Host) {
             } else {
                 bad!("bytes differ: got {} of {}", bytes.len(), PNG.len());
             }
-            let b64 = sshdesk_core::b64encode(&bytes);
+            let b64 = plydesk_core::b64encode(&bytes);
             // The viewer builds `data:<mime>;base64,<this>`, so it has to be
             // exactly what a browser will accept.
             if b64.chars().all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '=')
@@ -477,7 +477,7 @@ fn probe_dbus(h: &mut Host) {
     match h.bus().and_then(|b| b.call(
         "org.freedesktop.systemd1", "/org/freedesktop/systemd1",
         "org.freedesktop.systemd1.Manager", "StartUnit",
-        &[dbus::Val::Str("sshdesk-probe-nonexistent.service".into()),
+        &[dbus::Val::Str("plydesk-probe-nonexistent.service".into()),
           dbus::Val::Str("replace".into())])) {
         Err(Error::Remote { stderr, .. }) if stderr.contains("InteractiveAuthorizationRequired") =>
             ok!("privileged write correctly refused by polkit (writes stay on sudo)"),

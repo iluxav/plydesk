@@ -1,10 +1,10 @@
-# sshdesk plugins
+# plydesk plugins
 
-A plugin is a directory containing `manifest.json` and `index.js`. sshdesk
+A plugin is a directory containing `manifest.json` and `index.js`. plydesk
 reads the manifest at boot to put the app in the dock; the JavaScript is not
 executed until you open a window, and then it runs in its own isolated view
 with exactly the access the manifest declares and you approved. No
-recompilation of sshdesk is needed.
+recompilation of plydesk is needed.
 
 ```
 plugins/
@@ -19,8 +19,8 @@ plugins/
 **Plugin roots** are merged in this order; a later folder with the same name
 replaces an earlier one:
 1. Plugins shipped inside the app bundle
-2. `~/.sshdesk/plugins`
-3. `$SSHDESK_PLUGINS` (set to this directory by the development commands)
+2. `~/.plydesk/plugins`
+3. `$PLYDESK_PLUGINS` (set to this directory by the development commands)
 
 Use **Settings → Apps & Extensions → Reload extensions** to re-read from disk
 without restarting. Settings asks before closing open extension windows, since
@@ -41,7 +41,7 @@ Open **Settings → Developer**, enable **Developer mode**, and choose **Load
 local app…**. Browse to your app folder or paste an absolute path (`~/…` works).
 The selected folder must contain `index.js` and optionally `style.css`.
 Registrations and their enabled/watch settings are saved on this Mac across
-restarts. Nothing is copied into the app bundle and sshdesk does not need to be
+restarts. Nothing is copied into the app bundle and plydesk does not need to be
 rebuilt for plugin edits.
 
 Each app has **Open**, **Reload**, **Reload on changes**, an enable switch, and
@@ -82,7 +82,7 @@ This is content reload, not React Fast Refresh.
 Use **Settings → Developer → Open DevTools** to inspect the desktop and local
 apps, including in the compiled release app. On macOS this opens WebKit's Web
 Inspector, with Elements, Console, Sources, and Network tools. Local apps share
-the desktop inspector. Bundles include `sshdesk-plugin://` source annotations
+the desktop inspector. Bundles include `plydesk-plugin://` source annotations
 matching their folders, although WebKit can still list imported modules as
 `blob:` scripts. Search Sources for your app name or manifest ID to find its
 code. Embedded web apps such as VS Code have a separate webview and are not
@@ -96,7 +96,7 @@ directory on this Mac, separately from per-machine appearance settings.
 
 ## `manifest.json` — identity and permissions
 
-The manifest is data, read without running your code. Everything sshdesk
+The manifest is data, read without running your code. Everything plydesk
 needs before a window opens lives here:
 
 ```json
@@ -152,7 +152,7 @@ actions the user takes.
 
 ### Consent
 
-The first time you open an app on a machine, sshdesk shows its name, version,
+The first time you open an app on a machine, plydesk shows its name, version,
 source folder and each requested permission, and asks before any of its code
 runs. Approval is saved per app, per machine, in `app-grants.json` in the app
 configuration directory on this Mac. An app with an empty `permissions` list
@@ -178,7 +178,7 @@ change to `manifest.json` asks again.
     { kind: 'package', command: 'docker',
       packages: { apt: 'docker.io', dnf: 'docker', default: 'docker' } },
 
-    // not in any repo. Lands in ~/.sshdesk/opt, so it needs no root at all
+    // not in any repo. Lands in ~/.plydesk/opt, so it needs no root at all
     // and `rm -rf` undoes it. The checksum is required, not optional.
     { kind: 'archive', command: 'openvscode-server',
       url: 'https://example.com/openvscode-server-${arch}.tar.gz',
@@ -203,7 +203,7 @@ export function createAdapter(sdk) { ... }   // JSON -> CLI -> JSON. Optional.
 export function createApp(ctx) { ... }       // returns a React component. Required.
 ```
 
-An `export const manifest` is still allowed for tooling, but sshdesk reads
+An `export const manifest` is still allowed for tooling, but plydesk reads
 `manifest.json`; if both exist their `id` must match. Nothing else is loaded.
 An app that throws while starting shows the error in its own window and in
 Developer settings. The rest of the desktop is unaffected — each app runs in a
@@ -300,7 +300,7 @@ editors. Use `label` and optional `hint` text to explain each preference. These
 are appearance declarations, not a general schema for credentials, switches,
 or arbitrary app configuration. Keep additional preferences inside your app.
 
-Configuration is saved in `~/.sshdesk/config.toml` on the Mac. A machine's
+Configuration is saved in `~/.plydesk/config.toml` on the Mac. A machine's
 override takes precedence over the default your app declares:
 
 ```toml
@@ -408,7 +408,7 @@ html`<div style=${{ padding: 16 }}>…</div>`  // fine
 html`<div class="my-pad">…</div>`            // better — put it in style.css
 ```
 
-The error is real and fatal: it unmounts your app. sshdesk catches it per
+The error is real and fatal: it unmounts your app. plydesk catches it per
 window rather than letting it take the desktop down, but the window still shows
 a stack trace instead of your app.
 
@@ -509,14 +509,14 @@ Read the consent screen.
 
 ## A minimal plugin
 
-`~/.sshdesk/plugins/uptime/manifest.json`:
+`~/.plydesk/plugins/uptime/manifest.json`:
 
 ```json
 { "schemaVersion": 1, "id": "uptime", "name": "Uptime", "version": "1.0.0",
   "icon": "⏱", "permissions": ["remote.exec"] }
 ```
 
-`~/.sshdesk/plugins/uptime/index.js`:
+`~/.plydesk/plugins/uptime/index.js`:
 
 ```js
 export function createAdapter(sdk) {

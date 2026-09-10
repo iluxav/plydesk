@@ -1,4 +1,4 @@
-/* Shared app controls are supplied by sshdesk; the connection table stays local. */
+/* Shared app controls are supplied by plydesk; the connection table stays local. */
 .ports-scroll { flex: 1; min-height: 0; overflow: auto; }
 .ports-table { width: 100%; min-width: 650px; border-collapse: collapse; }
 .ports-table th { position: sticky; top: 0; z-index: 1; text-align: left; font-size: 10px; font-weight: 500;

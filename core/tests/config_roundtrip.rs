@@ -1,6 +1,6 @@
 #[test]
 fn settings_writes_for_several_apps_accumulate() {
-    use sshdesk_core::config::{Flat, parse, render};
+    use plydesk_core::config::{Flat, parse, render};
     let mut flat = Flat::new();
     for (k, v) in [
         ("icons.ports.app", "lucide:ethernet-port"),

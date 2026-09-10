@@ -1,4 +1,4 @@
-use sshdesk_core::Host;
+use plydesk_core::Host;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream};
 use std::time::Duration;
 
@@ -14,10 +14,10 @@ fn answers(port: u16) -> bool {
 #[test]
 #[ignore]
 fn a_forward_can_be_re_established_on_the_same_port() {
-    let target = std::env::var("SSHDESK_HOST").expect("SSHDESK_HOST");
+    let target = std::env::var("PLYDESK_HOST").expect("PLYDESK_HOST");
     let mut h = Host::connect(&target).expect("connect");
     let home = h.sftp().unwrap().home().unwrap();
-    let sock = format!("{home}/.sshdesk/opt/openvscode.sock");
+    let sock = format!("{home}/.plydesk/opt/openvscode.sock");
 
     let out = h.run(&format!("test -S {sock} && echo yes || echo no")).unwrap();
     if out.stdout.trim() != "yes" {

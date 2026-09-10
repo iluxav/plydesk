@@ -39,7 +39,7 @@ export function Editor({ path, setTitle }: { path?: string; setTitle?: (t: strin
   useEffect(() => {
     if (!host.current || !path) return
     const editor = monaco.editor.create(host.current, {
-      theme: 'sshdesk',
+      theme: 'plydesk',
       automaticLayout: true,
       fontSize: 13,
       padding: { top: 12, bottom: 12 },
@@ -77,7 +77,7 @@ export function Editor({ path, setTitle }: { path?: string; setTitle?: (t: strin
         setLang(language)
         setMeta({ size: r.size, truncated: r.truncated })
         const m = monaco.editor.createModel(r.text, language,
-          monaco.Uri.parse(`sshdesk://${fw.host.current()}${path}`))
+          monaco.Uri.parse(`plydesk://${fw.host.current()}${path}`))
         model.current?.dispose()
         model.current = m
         ed.current?.setModel(m)

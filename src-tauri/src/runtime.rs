@@ -121,7 +121,7 @@ fn validate_manifest(m: &Manifest) -> Result<(), String> {
         if list.len() > 100 || list.iter().any(|v| !v.as_str().is_some_and(|v| v.len() <= 200)) { return Err("Invalid file associations".into()); }
     }
     if let Some(reqs) = m.extra.get("requires") {
-        let parsed: Vec<sshdesk_core::deps::Requirement> = serde_json::from_value(reqs.clone()).map_err(|e| format!("Invalid requirements: {e}"))?;
+        let parsed: Vec<plydesk_core::deps::Requirement> = serde_json::from_value(reqs.clone()).map_err(|e| format!("Invalid requirements: {e}"))?;
         if !parsed.is_empty() && !m.permissions.iter().any(|p| p == "remote.exec") { return Err("Apps with remote dependencies must declare remote.exec".into()); }
     }
     if let Some(tokens) = m.extra.get("tokens") {
@@ -207,7 +207,7 @@ fn require(s: &Session, permission: &str) -> Result<(), String> {
 fn evaluate(app: &tauri::AppHandle, label: &str, kind: &str, payload: Value) -> Result<(), String> {
     let view = app.get_webview(label).ok_or("App view is closed")?;
     let value = serde_json::to_string(&json!({"kind":kind,"payload":payload})).map_err(|e| e.to_string())?;
-    view.eval(format!("window.dispatchEvent(new CustomEvent('sshdesk:runtime', {{detail:{value}}}))")).map_err(|e| e.to_string())
+    view.eval(format!("window.dispatchEvent(new CustomEvent('plydesk:runtime', {{detail:{value}}}))")).map_err(|e| e.to_string())
 }
 #[tauri::command]
 pub async fn runtime_prepare(app: tauri::AppHandle, webview: Webview, directory: String, host: String) -> Result<Preview, String> {
@@ -338,10 +338,10 @@ pub fn runtime_event(app: tauri::AppHandle, webview: Webview, kind: String, payl
 fn forward_focus(app: &tauri::AppHandle, webview: &Webview, event: Value) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        extern "C" { fn sshdesk_runtime_focused(view: *mut std::ffi::c_void) -> bool; }
+        extern "C" { fn plydesk_runtime_focused(view: *mut std::ffi::c_void) -> bool; }
         let app = app.clone();
         webview.with_webview(move |platform| {
-            if unsafe { sshdesk_runtime_focused(platform.inner().cast()) } { let _ = app.emit_to("main", "app-runtime-event", event); }
+            if unsafe { plydesk_runtime_focused(platform.inner().cast()) } { let _ = app.emit_to("main", "app-runtime-event", event); }
         }).map_err(|e| e.to_string())
     }
     #[cfg(not(target_os = "macos"))]
@@ -645,9 +645,9 @@ fn watch_units(app: &tauri::AppHandle, label: &str, s: &Arc<Session>) -> Result<
     let (sock, uid) = match connected { Ok(v) => v, Err(e) => { s.watching.store(false,Ordering::SeqCst); return Err(e); } };
     let app = app.clone(); let label = label.to_string(); let s = s.clone();
     std::thread::spawn(move || {
-        let run = || -> Result<(), sshdesk_core::Error> {
-            let mut bus = sshdesk_core::dbus::Dbus::connect(&sock, uid)?;
-            sshdesk_core::subscribe_units(&mut bus)?;
+        let run = || -> Result<(), plydesk_core::Error> {
+            let mut bus = plydesk_core::dbus::Dbus::connect(&sock, uid)?;
+            plydesk_core::subscribe_units(&mut bus)?;
             while s.alive.load(Ordering::SeqCst) {
                 if let Some(sig) = bus.next_signal(Duration::from_secs(1))? {
                     if !s.alive.load(Ordering::SeqCst) { break; }
@@ -669,7 +669,7 @@ pub async fn runtime_snapshot(app: tauri::AppHandle, webview: Webview, label: St
     #[cfg(target_os = "macos")]
     {
         use std::{ffi::{c_void, c_char, CStr}, sync::mpsc};
-        extern "C" { fn sshdesk_runtime_snapshot(view: *mut c_void, context: *mut c_void, callback: extern "C" fn(*mut c_void, *const c_char)); }
+        extern "C" { fn plydesk_runtime_snapshot(view: *mut c_void, context: *mut c_void, callback: extern "C" fn(*mut c_void, *const c_char)); }
         extern "C" fn receive(context: *mut c_void, value: *const c_char) {
             let sender = unsafe { Box::from_raw(context.cast::<mpsc::Sender<String>>()) };
             let value = unsafe { CStr::from_ptr(value) }.to_string_lossy().into_owned();
@@ -679,7 +679,7 @@ pub async fn runtime_snapshot(app: tauri::AppHandle, webview: Webview, label: St
         let (tx,rx) = mpsc::channel::<String>();
         view.with_webview(move |platform| {
             let context = Box::into_raw(Box::new(tx)).cast();
-            unsafe { sshdesk_runtime_snapshot(platform.inner().cast(), context, receive); }
+            unsafe { plydesk_runtime_snapshot(platform.inner().cast(), context, receive); }
         }).map_err(|e| e.to_string())?;
         return tauri::async_runtime::spawn_blocking(move || {
             let value = rx.recv_timeout(Duration::from_secs(3)).map_err(|_| "Preview unavailable")?;
@@ -755,7 +755,7 @@ mod tests {
     }
     #[test]
     fn catalog_reads_metadata_without_loading_javascript_or_styles() {
-        let dir = std::env::temp_dir().join(format!("sshdesk-catalog-{}",uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("plydesk-catalog-{}",uuid::Uuid::new_v4()));
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join("manifest.json"),serde_json::to_vec(&manifest()).unwrap()).unwrap();
         fs::write(dir.join("index.js"),"throw new Error('discovery must not execute me')").unwrap();

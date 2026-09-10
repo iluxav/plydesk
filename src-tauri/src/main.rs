@@ -7,7 +7,7 @@ mod runtime;
 mod index;
 
 use serde::Serialize;
-use sshdesk_core::{
+use plydesk_core::{
     copy, list_dir, list_ports, list_processes, list_services, mkdir,
     read_file, remove, rename, resolve_path, server_time, write_file, Entry, Host, Port,
     Process, Service,
@@ -75,7 +75,7 @@ struct Snapshot {
 fn with_host<T>(
     hosts: &State<Hosts>,
     target: &str,
-    f: impl FnOnce(&mut Host) -> Result<T, sshdesk_core::Error>,
+    f: impl FnOnce(&mut Host) -> Result<T, plydesk_core::Error>,
 ) -> Result<T, String> {
     let mut map = hosts.0.lock().map_err(|e| e.to_string())?;
     let h = map.get_mut(target).ok_or("not connected")?;
@@ -95,7 +95,7 @@ fn connect(hosts: State<Hosts>, target: String, password: Option<String>) -> Res
 }
 
 #[tauri::command]
-fn clock(hosts: State<Hosts>, target: String) -> Result<sshdesk_core::ServerTime, String> {
+fn clock(hosts: State<Hosts>, target: String) -> Result<plydesk_core::ServerTime, String> {
     with_host(&hosts, &target, server_time)
 }
 
@@ -136,7 +136,7 @@ fn service_action(
     password: String,
 ) -> Result<String, String> {
     with_host(&hosts, &target, |h| {
-        sshdesk_core::service_action(h, &unit, &action, &password)?;
+        plydesk_core::service_action(h, &unit, &action, &password)?;
         Ok(format!("{action} {unit}: ok"))
     })
 }
@@ -172,9 +172,9 @@ fn watch_units(
 
     let t2 = target.clone();
     std::thread::spawn(move || {
-        let run = || -> Result<(), sshdesk_core::Error> {
-            let mut d = sshdesk_core::dbus::Dbus::connect(&sock, uid)?;
-            sshdesk_core::subscribe_units(&mut d)?;
+        let run = || -> Result<(), plydesk_core::Error> {
+            let mut d = plydesk_core::dbus::Dbus::connect(&sock, uid)?;
+            plydesk_core::subscribe_units(&mut d)?;
             let _ = app.emit("units:watching", &t2);
             loop {
                 match d.next_signal(std::time::Duration::from_secs(60)) {
@@ -214,7 +214,7 @@ struct UnitSignal {
 #[tauri::command]
 fn systemd_property(hosts: State<Hosts>, target: String, prop: String)
     -> Result<serde_json::Value, String> {
-    with_host(&hosts, &target, |h| sshdesk_core::systemd_property(h, &prop))
+    with_host(&hosts, &target, |h| plydesk_core::systemd_property(h, &prop))
 }
 
 /// Materialise remote files locally so the OS can drag them.
@@ -232,7 +232,7 @@ fn stage_for_drag(
     target: String,
     paths: Vec<String>,
 ) -> Result<Vec<String>, String> {
-    let root = std::env::temp_dir().join("sshdesk-drag");
+    let root = std::env::temp_dir().join("plydesk-drag");
     sweep_old_stagings(&root);
     let dir = root.join(format!("{}-{}", std::process::id(), now_millis()));
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -290,7 +290,7 @@ fn upload_files(
             let path = std::path::Path::new(l);
             let name = path.file_name().map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_else(|| "file".into());
-            let dest = sshdesk_core::sftp::join(&remote_dir, &name);
+            let dest = plydesk_core::sftp::join(&remote_dir, &name);
             let report = h.sftp()?.upload_tree(path, &dest)?;
             bytes += report.bytes;
             skipped.extend(report.skipped);
@@ -301,7 +301,7 @@ fn upload_files(
 }
 
 /// "· 3 skipped (permission denied)" or nothing.
-fn skipped_note(skipped: &[sshdesk_core::sftp::Skipped]) -> String {
+fn skipped_note(skipped: &[plydesk_core::sftp::Skipped]) -> String {
     match skipped {
         [] => String::new(),
         [first, ..] => format!(" · {} skipped ({})", skipped.len(), first.reason),
@@ -322,12 +322,12 @@ fn wallpaper_data(path: String) -> Result<String, String> {
         return Err(format!("{} is {:.0} MB — the limit is {} MB",
             path, meta.len() as f64 / 1e6, MAX / 1_000_000))
     }
-    let mime = sshdesk_core::mime_of(&path);
+    let mime = plydesk_core::mime_of(&path);
     if !mime.starts_with("image/") {
-        return Err(format!("{path} is not an image sshdesk recognises"))
+        return Err(format!("{path} is not an image plydesk recognises"))
     }
     let bytes = std::fs::read(&path).map_err(|e| format!("{path}: {e}"))?;
-    Ok(format!("data:{mime};base64,{}", sshdesk_core::b64encode(&bytes)))
+    Ok(format!("data:{mime};base64,{}", plydesk_core::b64encode(&bytes)))
 }
 
 // ---- configuration ------------------------------------------------------
@@ -336,8 +336,8 @@ fn wallpaper_data(path: String) -> Result<String, String> {
 /// manifests in the frontend, and duplicating that registry here would buy
 /// nothing.
 #[tauri::command]
-fn config_load() -> sshdesk_core::config::Settings {
-    sshdesk_core::config::load()
+fn config_load() -> plydesk_core::config::Settings {
+    plydesk_core::config::load()
 }
 
 /// Write one key, or remove it when no value is given.
@@ -349,7 +349,7 @@ fn config_load() -> sshdesk_core::config::Settings {
 #[tauri::command]
 fn config_set(key: String, value: Option<String>, machine: Option<String>)
     -> Result<(), String> {
-    sshdesk_core::config::set(&key, value.as_deref(), machine.as_deref())
+    plydesk_core::config::set(&key, value.as_deref(), machine.as_deref())
         .map_err(|e| e.to_string())
 }
 
@@ -357,19 +357,19 @@ fn config_set(key: String, value: Option<String>, machine: Option<String>)
 /// it. Returns how many keys moved; zero when there is nothing to do.
 #[tauri::command]
 fn config_migrate(targets: Vec<String>) -> Result<usize, String> {
-    sshdesk_core::config::migrate_globals(&targets).map_err(|e| e.to_string())
+    plydesk_core::config::migrate_globals(&targets).map_err(|e| e.to_string())
 }
 
 /// Where the file lives, so the UI can offer to open it in the Editor.
 #[tauri::command]
 fn config_path() -> String {
-    sshdesk_core::config::local_path().to_string_lossy().to_string()
+    plydesk_core::config::local_path().to_string_lossy().to_string()
 }
 
 /// Every installed icon pack, sanitised and ready to inject as a sprite.
 #[tauri::command]
-fn icon_packs() -> Vec<sshdesk_core::icons::Pack> {
-    sshdesk_core::icons::load()
+fn icon_packs() -> Vec<plydesk_core::icons::Pack> {
+    plydesk_core::icons::load()
 }
 
 /// Arbitrary D-Bus call — the platform primitive plugins build on.
@@ -394,8 +394,8 @@ fn dbus_call(
         let sig = signature.unwrap_or_default();
         let vals = args.unwrap_or_default();
         let mut built = Vec::new();
-        for (s, v) in sshdesk_core::dbus::split_sig(&sig).iter().zip(vals.iter()) {
-            built.push(sshdesk_core::dbus::from_json(s, v)?);
+        for (s, v) in plydesk_core::dbus::split_sig(&sig).iter().zip(vals.iter()) {
+            built.push(plydesk_core::dbus::from_json(s, v)?);
         }
         let out = h.bus()?.call(&dest, &path, &interface, &member, &built)?;
         Ok(serde_json::Value::Array(out.iter().map(|v| v.to_json()).collect()))
@@ -420,8 +420,8 @@ fn dbus_get(
 /// Typed free-space numbers, replacing the parsed `df -h` string.
 #[tauri::command]
 fn disk_info(hosts: State<Hosts>, target: String, path: String)
-    -> Result<sshdesk_core::DiskInfo, String> {
-    with_host(&hosts, &target, |h| sshdesk_core::disk_info(h, &path))
+    -> Result<plydesk_core::DiskInfo, String> {
+    with_host(&hosts, &target, |h| plydesk_core::disk_info(h, &path))
 }
 
 /// Which SFTP extensions this server offers. The UI can light up server-side
@@ -445,7 +445,7 @@ fn kill_process(
             h.sudo(&format!("kill {pid}"), &password)?
         };
         if o.code == 0 { Ok(format!("killed {pid}")) }
-        else { Err(sshdesk_core::Error::Remote { code: o.code, stderr: o.stderr }) }
+        else { Err(plydesk_core::Error::Remote { code: o.code, stderr: o.stderr }) }
     })
 }
 
@@ -455,7 +455,7 @@ struct DirListing {
     entries: Vec<Entry>,
     /// Typed numbers from statvfs, not a parsed `df -h` string. The UI decides
     /// how to render them, which is where that decision belongs.
-    disk: sshdesk_core::DiskInfo,
+    disk: plydesk_core::DiskInfo,
     /// Whether this server can copy files without shipping bytes over the wire.
     server_side_copy: bool,
     elapsed_ms: f64,
@@ -467,7 +467,7 @@ fn list_directory(hosts: State<Hosts>, target: String, path: String) -> Result<D
     with_host(&hosts, &target, |h| {
         let abs = resolve_path(h, &path)?;
         let entries = list_dir(h, &abs)?;
-        let disk = sshdesk_core::disk_info(h, &abs).unwrap_or_default();
+        let disk = plydesk_core::disk_info(h, &abs).unwrap_or_default();
         let server_side_copy = h.sftp()?.has("copy-data");
         Ok(DirListing { path: abs, entries, disk, server_side_copy, elapsed_ms: 0.0 })
     })
@@ -475,7 +475,7 @@ fn list_directory(hosts: State<Hosts>, target: String, path: String) -> Result<D
 }
 
 #[tauri::command]
-fn read_text(hosts: State<Hosts>, target: String, path: String) -> Result<sshdesk_core::FileRead, String> {
+fn read_text(hosts: State<Hosts>, target: String, path: String) -> Result<plydesk_core::FileRead, String> {
     // 2 MB cap: comfortably covers source files without letting the editor
     // choke on a log someone left running.
     with_host(&hosts, &target, |h| read_file(h, &path, 2 * 1024 * 1024))
@@ -509,7 +509,7 @@ fn download_file(
 /// by <top-level site, origin>, so a page embedded in tauri://localhost gets a
 /// third-party partition that is not durably kept — which is why VS Code's
 /// theme and settings reset on every restart. As a top-level window the page is
-/// first-party, and its storage persists exactly like sshdesk's own does.
+/// first-party, and its storage persists exactly like plydesk's own does.
 /// Cookies work first-party too, so a connection token becomes usable again.
 #[tauri::command]
 fn open_web_window(
@@ -554,82 +554,82 @@ fn open_web_window(
 fn deps_probe(
     hosts: State<Hosts>,
     target: String,
-    requirements: Vec<sshdesk_core::deps::Requirement>,
-) -> Result<Vec<sshdesk_core::deps::Status>, String> {
-    with_host(&hosts, &target, |h| sshdesk_core::deps::probe(h, &requirements))
+    requirements: Vec<plydesk_core::deps::Requirement>,
+) -> Result<Vec<plydesk_core::deps::Status>, String> {
+    with_host(&hosts, &target, |h| plydesk_core::deps::probe(h, &requirements))
 }
 
-/// Install one requirement. Archives land in ~/.sshdesk/opt and need no
+/// Install one requirement. Archives land in ~/.plydesk/opt and need no
 /// password; packages go through PackageKit and do.
 #[tauri::command]
 fn deps_install(
     hosts: State<Hosts>,
     target: String,
-    requirement: sshdesk_core::deps::Requirement,
+    requirement: plydesk_core::deps::Requirement,
     password: Option<String>,
 ) -> Result<String, String> {
     let pw = password.unwrap_or_default();
-    with_host(&hosts, &target, |h| sshdesk_core::deps::install(h, &requirement, &pw))
+    with_host(&hosts, &target, |h| plydesk_core::deps::install(h, &requirement, &pw))
 }
 
 #[tauri::command]
 fn deps_remove(hosts: State<Hosts>, target: String, name: String) -> Result<String, String> {
-    with_host(&hosts, &target, |h| sshdesk_core::deps::remove_archive(h, &name))
+    with_host(&hosts, &target, |h| plydesk_core::deps::remove_archive(h, &name))
 }
 
-/// Everything sshdesk has installed on this host, for Settings to list.
+/// Everything plydesk has installed on this host, for Settings to list.
 #[tauri::command]
 fn deps_installed(hosts: State<Hosts>, target: String)
-    -> Result<Vec<sshdesk_core::deps::Installed>, String> {
-    with_host(&hosts, &target, sshdesk_core::deps::list_installed)
+    -> Result<Vec<plydesk_core::deps::Installed>, String> {
+    with_host(&hosts, &target, plydesk_core::deps::list_installed)
 }
 
 // ---- packages -----------------------------------------------------------
 
 #[tauri::command]
 fn pkg_backend(hosts: State<Hosts>, target: String) -> Result<String, String> {
-    with_host(&hosts, &target, sshdesk_core::packagekit::backend)
+    with_host(&hosts, &target, plydesk_core::packagekit::backend)
 }
 
 #[tauri::command]
 fn pkg_search(hosts: State<Hosts>, target: String, query: String)
-    -> Result<Vec<sshdesk_core::packagekit::Package>, String> {
-    with_host(&hosts, &target, |h| sshdesk_core::packagekit::search(h, &query))
+    -> Result<Vec<plydesk_core::packagekit::Package>, String> {
+    with_host(&hosts, &target, |h| plydesk_core::packagekit::search(h, &query))
 }
 
 #[tauri::command]
 fn pkg_installed(hosts: State<Hosts>, target: String)
-    -> Result<Vec<sshdesk_core::packagekit::Package>, String> {
-    with_host(&hosts, &target, sshdesk_core::packagekit::list_installed)
+    -> Result<Vec<plydesk_core::packagekit::Package>, String> {
+    with_host(&hosts, &target, plydesk_core::packagekit::list_installed)
 }
 
 #[tauri::command]
 fn pkg_updates(hosts: State<Hosts>, target: String)
-    -> Result<Vec<sshdesk_core::packagekit::Package>, String> {
-    with_host(&hosts, &target, sshdesk_core::packagekit::list_updates)
+    -> Result<Vec<plydesk_core::packagekit::Package>, String> {
+    with_host(&hosts, &target, plydesk_core::packagekit::list_updates)
 }
 
 #[tauri::command]
 fn pkg_details(hosts: State<Hosts>, target: String, id: String)
-    -> Result<sshdesk_core::packagekit::Details, String> {
-    with_host(&hosts, &target, |h| sshdesk_core::packagekit::details(h, &id))
+    -> Result<plydesk_core::packagekit::Details, String> {
+    with_host(&hosts, &target, |h| plydesk_core::packagekit::details(h, &id))
 }
 
 #[tauri::command]
 fn pkg_install(hosts: State<Hosts>, target: String, name: String, password: String)
     -> Result<String, String> {
-    with_host(&hosts, &target, |h| sshdesk_core::packagekit::install(h, &name, &password))
+    with_host(&hosts, &target, |h| plydesk_core::packagekit::install(h, &name, &password))
 }
 
 #[tauri::command]
 fn pkg_remove(hosts: State<Hosts>, target: String, name: String, password: String)
     -> Result<String, String> {
-    with_host(&hosts, &target, |h| sshdesk_core::packagekit::remove(h, &name, &password))
+    with_host(&hosts, &target, |h| plydesk_core::packagekit::remove(h, &name, &password))
 }
 
 #[tauri::command]
 fn pkg_refresh(hosts: State<Hosts>, target: String, password: String) -> Result<String, String> {
-    with_host(&hosts, &target, |h| sshdesk_core::packagekit::refresh(h, &password))
+    with_host(&hosts, &target, |h| plydesk_core::packagekit::refresh(h, &password))
 }
 
 /// Raw bytes, base64'd for the IPC hop.
@@ -654,11 +654,11 @@ fn read_binary(
     max_bytes: Option<usize>,
 ) -> Result<BinaryRead, String> {
     let max = max_bytes.unwrap_or(32 * 1024 * 1024).min(64 * 1024 * 1024);
-    let mime = sshdesk_core::mime_of(&path).to_string();
+    let mime = plydesk_core::mime_of(&path).to_string();
     with_host(&hosts, &target, |h| {
         let size = h.sftp()?.stat(&path)?.size;
         let (bytes, truncated) = h.sftp()?.read(&path, max)?;
-        Ok(BinaryRead { b64: sshdesk_core::b64encode(&bytes), size, truncated, mime })
+        Ok(BinaryRead { b64: plydesk_core::b64encode(&bytes), size, truncated, mime })
     })
 }
 
@@ -678,7 +678,7 @@ fn rename_path(hosts: State<Hosts>, target: String, from: String, to: String) ->
 }
 
 #[tauri::command]
-fn copy_path(hosts: State<Hosts>, target: String, from: String, to: String) -> Result<sshdesk_core::sftp::TreeReport, String> {
+fn copy_path(hosts: State<Hosts>, target: String, from: String, to: String) -> Result<plydesk_core::sftp::TreeReport, String> {
     with_host(&hosts, &target, |h| copy(h, &from, &to))
 }
 
@@ -762,9 +762,9 @@ fn exec(
 ///
 /// Now there are three, and a later one shadows an earlier one by plugin id:
 ///
-///   1. inside the app bundle — the plugins that ship with sshdesk
-///   2. ~/.sshdesk/plugins    — what the user installs, so their copy wins
-///   3. $SSHDESK_PLUGINS      — an explicit override, used by `make run`
+///   1. inside the app bundle — the plugins that ship with plydesk
+///   2. ~/.plydesk/plugins    — what the user installs, so their copy wins
+///   3. $PLYDESK_PLUGINS      — an explicit override, used by `make run`
 fn plugin_roots(app: &tauri::AppHandle) -> Vec<std::path::PathBuf> {
     use tauri::Manager;
     let mut roots = Vec::new();
@@ -777,18 +777,16 @@ fn plugin_roots(app: &tauri::AppHandle) -> Vec<std::path::PathBuf> {
                 if candidate.is_dir() { roots.push(candidate); hit = true; break }
             }
             if !hit {
-                eprintln!("sshdesk: no plugins under resource dir {}", res.display());
+                eprintln!("plydesk: no plugins under resource dir {}", res.display());
             }
         }
-        Err(e) => eprintln!("sshdesk: no resource dir: {e}"),
+        Err(e) => eprintln!("plydesk: no resource dir: {e}"),
     }
 
-    if let Ok(home) = std::env::var("HOME") {
-        let user = std::path::Path::new(&home).join(".sshdesk/plugins");
-        if user.is_dir() { roots.push(user) }
-    }
+    let user = plydesk_core::config::data_dir().join("plugins");
+    if user.is_dir() { roots.push(user) }
 
-    if let Ok(p) = std::env::var("SSHDESK_PLUGINS") {
+    if let Ok(p) = std::env::var("PLYDESK_PLUGINS") {
         let dev = std::path::PathBuf::from(p);
         if dev.is_dir() { roots.push(dev) }
     }
@@ -888,7 +886,7 @@ fn forward_socket(
     let local = free_port(want);
     if local == 0 { return Err("no free local port".into()) }
     if local != want {
-        eprintln!("sshdesk: port {want} was taken, using {local} — \
+        eprintln!("plydesk: port {want} was taken, using {local} — \
                    anything this page remembered will look like a new site");
     }
     h.forward_socket(local, &remote_path).map_err(|e| e.to_string())?;
@@ -962,7 +960,7 @@ mod tests {
 
     #[test]
     fn the_same_forward_always_gets_the_same_port() {
-        let key = "iluxa@10.168.168.226:sock:/home/iluxa/.sshdesk/opt/openvscode.sock";
+        let key = "iluxa@10.168.168.226:sock:/home/iluxa/.plydesk/opt/openvscode.sock";
         let first = stable_port(key);
         for _ in 0..100 { assert_eq!(stable_port(key), first) }
         assert!((20000..30000).contains(&first), "out of range: {first}");
@@ -979,7 +977,39 @@ mod tests {
     }
 }
 
+/// The bundle identifier changed with the name in September 2026. macOS keys
+/// the app's configuration directory and its WebKit storage by identifier, so
+/// the first launch under the new one copies what the old one held: app
+/// approvals, developer registrations, and the browser storage that holds
+/// saved machines and preferences. The old copies are left in place.
+#[cfg(target_os = "macos")]
+fn migrate_identity() {
+    let Ok(home) = std::env::var("HOME") else { return };
+    let home = std::path::Path::new(&home);
+    for sub in ["Library/Application Support", "Library/WebKit"] {
+        let from = home.join(sub).join("dev.sshdesk.spike");
+        let to = home.join(sub).join("dev.plydesk.app");
+        if !from.is_dir() || to.exists() { continue }
+        if let Err(e) = copy_tree(&from, &to) { eprintln!("plydesk: could not carry over {}: {e}", from.display()); }
+    }
+}
+#[cfg(target_os = "macos")]
+fn copy_tree(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(to)?;
+    for entry in std::fs::read_dir(from)? {
+        let entry = entry?;
+        let kind = entry.file_type()?;
+        let target = to.join(entry.file_name());
+        if kind.is_dir() { copy_tree(&entry.path(), &target)?; }
+        else if kind.is_file() { std::fs::copy(entry.path(), target)?; }
+    }
+    Ok(())
+}
+
 fn main() {
+    // Before any webview exists, so WebKit opens the migrated store.
+    #[cfg(target_os = "macos")]
+    migrate_identity();
     tauri::Builder::default()
         .plugin(tauri_plugin_drag::init())
         .plugin(tauri_plugin_dialog::init())

@@ -19,9 +19,9 @@ mod mac {
     use std::{ffi::{c_char, c_void, CStr, CString}, sync::OnceLock};
     static APP: OnceLock<tauri::AppHandle> = OnceLock::new();
     extern "C" {
-        fn sshdesk_keyboard_configure(window: *mut c_void, json: *const c_char, callback: extern "C" fn(*const c_char)) -> bool;
-        fn sshdesk_keyboard_trusted() -> bool;
-        fn sshdesk_keyboard_request_access();
+        fn plydesk_keyboard_configure(window: *mut c_void, json: *const c_char, callback: extern "C" fn(*const c_char)) -> bool;
+        fn plydesk_keyboard_trusted() -> bool;
+        fn plydesk_keyboard_request_access();
     }
     extern "C" fn event(json: *const c_char) {
         // Copy the borrowed native JSON before the callback returns. Only the
@@ -36,10 +36,10 @@ mod mac {
         let _ = APP.set(app.clone());
         let window = app.get_window("main").ok_or("desktop window is unavailable")?;
         let json = CString::new(serde_json::to_string(&config).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
-        let ready = unsafe { sshdesk_keyboard_configure(window.ns_window().map_err(|e| e.to_string())?, json.as_ptr(), event) };
-        Ok(Status { native: true, accessibility: unsafe { sshdesk_keyboard_trusted() }, capture_ready: ready })
+        let ready = unsafe { plydesk_keyboard_configure(window.ns_window().map_err(|e| e.to_string())?, json.as_ptr(), event) };
+        Ok(Status { native: true, accessibility: unsafe { plydesk_keyboard_trusted() }, capture_ready: ready })
     }
-    pub fn request() { unsafe { sshdesk_keyboard_request_access() } }
+    pub fn request() { unsafe { plydesk_keyboard_request_access() } }
 }
 
 #[tauri::command]

@@ -1,13 +1,13 @@
-use sshdesk_core::Host;
+use plydesk_core::Host;
 
 /// The plugin's start script, run the way sdk.exec runs it, then the token it
 /// reports is checked against the server it started.
 #[test]
 #[ignore]
 fn start_reports_a_token_that_the_server_enforces() {
-    let target = std::env::var("SSHDESK_HOST").expect("SSHDESK_HOST");
+    let target = std::env::var("PLYDESK_HOST").expect("PLYDESK_HOST");
     let mut h = Host::connect(&target).expect("connect");
-    let opt = "$HOME/.sshdesk/opt";
+    let opt = "$HOME/.plydesk/opt";
 
     // Stop whatever is there so this exercises the fresh-start path.
     h.run_argv(&["sh".into(), "-c".into(), format!(

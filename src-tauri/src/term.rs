@@ -1,6 +1,6 @@
 //! Interactive terminal sessions.
 //!
-//! Everything else in sshdesk is request/response over one persistent shell.
+//! Everything else in plydesk is request/response over one persistent shell.
 //! A terminal is not: it needs a real PTY so that `vim`, `top`, job control and
 //! colours behave, plus continuous output in both directions.
 //!
@@ -75,7 +75,7 @@ pub fn open(
                 Ok(n) => {
                     let _ = app2.emit(
                         "term:data",
-                        Chunk { id: id2.clone(), b64: sshdesk_core::b64encode(&buf[..n]) },
+                        Chunk { id: id2.clone(), b64: plydesk_core::b64encode(&buf[..n]) },
                     );
                 }
             }

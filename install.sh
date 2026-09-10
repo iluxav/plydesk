@@ -1,8 +1,8 @@
 #!/bin/sh
 #
-# sshdesk installer.
+# plydesk installer.
 #
-#   curl -fsSL https://raw.githubusercontent.com/iluxav/sshdesk/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/iluxav/plydesk/main/install.sh | sh
 #
 # Why this exists rather than a .dmg: the app is not notarised, and macOS
 # quarantines anything a *browser* downloads, so a downloaded .dmg would be
@@ -11,22 +11,22 @@
 # the checksums it verifies, which is why it verifies them.
 #
 # Environment:
-#   SSHDESK_REPO     owner/repo to install from (default below)
-#   SSHDESK_VERSION  a tag such as v0.1.0 (default: latest release)
-#   SSHDESK_PREFIX   where the app goes (default: /Applications, else ~/Applications)
-#   SSHDESK_BASE_URL where assets are fetched from (default: the GitHub release)
+#   PLYDESK_REPO     owner/repo to install from (default below)
+#   PLYDESK_VERSION  a tag such as v0.1.0 (default: latest release)
+#   PLYDESK_PREFIX   where the app goes (default: /Applications, else ~/Applications)
+#   PLYDESK_BASE_URL where assets are fetched from (default: the GitHub release)
 
 set -eu
 
-REPO="${SSHDESK_REPO:-iluxav/sshdesk}"
-VERSION="${SSHDESK_VERSION:-latest}"
+REPO="${PLYDESK_REPO:-iluxav/plydesk}"
+VERSION="${PLYDESK_VERSION:-latest}"
 API="https://api.github.com/repos/$REPO/releases"
 
 say()  { printf '%s\n' "$*"; }
 warn() { printf '\033[33m%s\033[0m\n' "$*" >&2; }
 die()  { printf '\033[31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 
-[ "$(uname -s)" = "Darwin" ] || die "sshdesk is macOS only for now (this is $(uname -s))."
+[ "$(uname -s)" = "Darwin" ] || die "plydesk is macOS only for now (this is $(uname -s))."
 
 case "$(uname -m)" in
   arm64)  ARCH=aarch64 ;;
@@ -39,7 +39,7 @@ command -v shasum >/dev/null 2>&1 || die "shasum is required."
 
 # Resolve the release, and say which one, so an unexpected version is visible
 # before anything is written.
-if [ -n "${SSHDESK_BASE_URL:-}" ]; then
+if [ -n "${PLYDESK_BASE_URL:-}" ]; then
   TAG="${VERSION#latest}"; TAG="${TAG:-local}"
 elif [ "$VERSION" = "latest" ]; then
   TAG=$(curl -fsSL "$API/latest" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)
@@ -48,10 +48,10 @@ else
   TAG="$VERSION"
 fi
 
-ASSET="sshdesk-${TAG}-${ARCH}.tar.gz"
-BASE="${SSHDESK_BASE_URL:-https://github.com/$REPO/releases/download/$TAG}"
+ASSET="plydesk-${TAG}-${ARCH}.tar.gz"
+BASE="${PLYDESK_BASE_URL:-https://github.com/$REPO/releases/download/$TAG}"
 
-say "sshdesk $TAG ($ARCH)"
+say "plydesk $TAG ($ARCH)"
 
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT INT TERM
@@ -74,12 +74,12 @@ Refusing to install."
 
 say "  unpacking"
 tar -xzf "$TMP/$ASSET" -C "$TMP"
-[ -d "$TMP/sshdesk.app" ] || die "the archive did not contain sshdesk.app"
+[ -d "$TMP/plydesk.app" ] || die "the archive did not contain plydesk.app"
 
 # /Applications when writable, otherwise the user's own — never sudo behind
 # your back.
-if [ -n "${SSHDESK_PREFIX:-}" ]; then
-  DEST="$SSHDESK_PREFIX"
+if [ -n "${PLYDESK_PREFIX:-}" ]; then
+  DEST="$PLYDESK_PREFIX"
 elif [ -w /Applications ]; then
   DEST=/Applications
 else
@@ -93,20 +93,25 @@ mkdir -p "$DEST" || die "cannot create $DEST"
 
 
 
-if [ -d "$DEST/sshdesk.app" ]; then
+if [ -d "$DEST/plydesk.app" ]; then
   say "  replacing the existing install"
-  rm -rf "$DEST/sshdesk.app"
+  rm -rf "$DEST/plydesk.app"
 fi
-mv "$TMP/sshdesk.app" "$DEST/sshdesk.app"
+mv "$TMP/plydesk.app" "$DEST/plydesk.app"
 
 # curl leaves no quarantine attribute, so this is belt and braces for anyone
 # who fetched the tarball with a browser instead.
-xattr -dr com.apple.quarantine "$DEST/sshdesk.app" 2>/dev/null || true
+xattr -dr com.apple.quarantine "$DEST/plydesk.app" 2>/dev/null || true
 
 say ""
-say "Installed to $DEST/sshdesk.app"
+say "Installed to $DEST/plydesk.app"
+# The app was called sshdesk until September 2026. Its settings carry over on
+# first launch; the old bundle is left for the user to remove.
+if [ -d "$DEST/sshdesk.app" ]; then
+  warn "  The previous version is still at $DEST/sshdesk.app. Once plydesk has opened, remove it with:  rm -rf $DEST/sshdesk.app"
+fi
 say ""
-say "  open -a sshdesk        # or find it in Launchpad"
+say "  open -a plydesk        # or find it in Launchpad"
 say ""
 say "It is not signed by Apple, so a browser download would have been blocked."
-say "Installed this way it just opens. To remove it:  rm -rf $DEST/sshdesk.app"
+say "Installed this way it just opens. To remove it:  rm -rf $DEST/plydesk.app"

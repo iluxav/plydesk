@@ -141,7 +141,7 @@ async function loadLocal(directory: string) {
     local.set(directory, { prepared, stamp, loadedAt: Date.now() })
   } catch (e) {
     local.set(directory, { ...previous, stamp, error: String(e), errorStage: 'load' })
-    console.error(`sshdesk: local app ${directory}:`, e)
+    console.error(`plydesk: local app ${directory}:`, e)
   }
 }
 
@@ -213,7 +213,7 @@ export function loadPlugins(): Promise<string[]> {
         next.set(prepared.def.id, prepared)
       } catch (e) {
         failures.push({ name: p.name, directory: p.dir, message: String(e) })
-        console.error(`sshdesk: plugin ${p.name}:`, e)
+        console.error(`plydesk: plugin ${p.name}:`, e)
       }
     }
     base = next

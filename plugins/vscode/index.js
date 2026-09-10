@@ -1,12 +1,12 @@
 /**
- * sshdesk plugin: VS Code
+ * plydesk plugin: VS Code
  *
  * A test of whether the platform is real: this adds a full IDE with no change
- * to sshdesk itself. The dependency comes from the manifest, the server is
+ * to plydesk itself. The dependency comes from the manifest, the server is
  * started with `sdk.exec`, the socket is forwarded with `fw.net.forwardSocket`
  * on the live connection, and the result is a window.
  *
- * The editor is a first-party child webview inside its sshdesk desktop
+ * The editor is a first-party child webview inside its plydesk desktop
  * window. It keeps browser storage and authentication cookies without opening
  * a separate macOS window. The desktop owns its bounds and lifetime.
  *
@@ -45,7 +45,7 @@ export const manifest = {
 
 }
 
-const OPT = '$HOME/.sshdesk/opt'
+const OPT = '$HOME/.plydesk/opt'
 const LOG = `${OPT}/openvscode.log`
 const PID = `${OPT}/openvscode.pid`
 const SOCK = `${OPT}/openvscode.sock`

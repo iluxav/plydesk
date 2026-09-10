@@ -94,8 +94,8 @@ export function MenuBar({ hosts, active, onSwitch, onAdd, onDisconnect, onReload
           { label: 'Reload plugins', icon: '⟳', shortcut: '⌘R', onSelect: () => { void onReloadPlugins?.() } },
           { type: 'separator' },
           { label: `Disconnect from ${host}`, onSelect: () => onDisconnect(active) },
-          { label: 'Quit sshdesk', danger: true, onSelect: () => { void fw.win.close() } },
-        ])}>sshdesk</button>
+          { label: 'Quit plydesk', danger: true, onSelect: () => { void fw.win.close() } },
+        ])}>plydesk</button>
       <button className="menubar-item" aria-haspopup="menu"
         onClick={ev => menu.open(ev, [
           ...(onSearch ? [{ label: 'Search apps and files…', shortcut: bindings.launcher ? formatShortcut(bindings.launcher) : undefined, onSelect: onSearch }, { type: 'separator' as const }] : []),

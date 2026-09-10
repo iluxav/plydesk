@@ -1,4 +1,4 @@
-use sshdesk_core::{deps, Host};
+use plydesk_core::{deps, Host};
 use std::collections::BTreeMap;
 
 /// The exact requirement the VS Code plugin declares, checked the way the
@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 #[test]
 #[ignore]
 fn the_vscode_requirement_is_installable() {
-    let target = std::env::var("SSHDESK_HOST").expect("SSHDESK_HOST");
+    let target = std::env::var("PLYDESK_HOST").expect("PLYDESK_HOST");
     let mut h = Host::connect(&target).expect("connect");
     let m = |p: &[(&str, &str)]| p.iter()
         .map(|(k, v)| (k.to_string(), v.to_string())).collect::<BTreeMap<_, _>>();

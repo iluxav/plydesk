@@ -204,12 +204,12 @@ mod tests {
         assert_eq!((status.count, status.building, status.error.as_deref()), (1, false, Some("ssh exited")));
     }
     /// Needs a live ControlMaster:
-    /// SSHDESK_TEST_HOST=user@host SSHDESK_TEST_CTL=~/.sshdesk-user_host.sock cargo test walks_a_real_home -- --ignored --nocapture
+    /// PLYDESK_TEST_HOST=user@host PLYDESK_TEST_CTL=~/.plydesk-user_host.sock cargo test walks_a_real_home -- --ignored --nocapture
     #[test]
     #[ignore]
     fn walks_a_real_home_when_a_host_is_given() {
-        let target = std::env::var("SSHDESK_TEST_HOST").expect("SSHDESK_TEST_HOST=user@host");
-        let ctl = std::env::var("SSHDESK_TEST_CTL").expect("SSHDESK_TEST_CTL=control socket path");
+        let target = std::env::var("PLYDESK_TEST_HOST").expect("PLYDESK_TEST_HOST=user@host");
+        let ctl = std::env::var("PLYDESK_TEST_CTL").expect("PLYDESK_TEST_CTL=control socket path");
         let started = Instant::now();
         let (entries, truncated) = walk(&ctl, &target).unwrap();
         eprintln!("{} entries in {:?}, truncated={truncated}", entries.len(), started.elapsed());

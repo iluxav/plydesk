@@ -19,7 +19,7 @@ import tsWorker from 'monaco-editor/language/typescript/ts.worker.js?worker'
   },
 }
 
-monaco.editor.defineTheme('sshdesk', {
+monaco.editor.defineTheme('plydesk', {
   base: 'vs-dark',
   inherit: true,
   rules: [],

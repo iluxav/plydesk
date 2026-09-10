@@ -1,7 +1,7 @@
 name: release
 
 # Tag-driven, plus a manual button for dry runs. The tag is the version:
-# v0.2.0 produces sshdesk-v0.2.0-aarch64.tar.gz.
+# v0.2.0 produces plydesk-v0.2.0-aarch64.tar.gz.
 on:
   push:
     tags: ['v*']
@@ -99,17 +99,17 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             TAG="${{ inputs.tag || 'dev' }}"
           fi
-          NAME="sshdesk-${TAG}-${{ matrix.arch }}.tar.gz"
-          # No parent directory in the archive: install.sh expects sshdesk.app
+          NAME="plydesk-${TAG}-${{ matrix.arch }}.tar.gz"
+          # No parent directory in the archive: install.sh expects plydesk.app
           # at the top level.
-          tar -czf "$NAME" sshdesk.app
+          tar -czf "$NAME" plydesk.app
           shasum -a 256 "$NAME" > "$NAME.sha256"
           echo "name=$NAME" >> "$GITHUB_OUTPUT"
           echo "path=$PWD/$NAME" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: sshdesk-${{ matrix.arch }}
+          name: plydesk-${{ matrix.arch }}
           path: |
             ${{ steps.package.outputs.path }}
             ${{ steps.package.outputs.path }}.sha256
@@ -144,7 +144,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${GITHUB_REF_NAME}" \
-            --title "sshdesk ${GITHUB_REF_NAME}" \
+            --title "plydesk ${GITHUB_REF_NAME}" \
             --notes "$(cat <<'NOTES'
           ## Install
 
@@ -157,7 +157,7 @@ jobs:
           installed with `curl` it is not quarantined and simply opens. The
           installer verifies the checksum before writing anything.
 
-          To remove it: `rm -rf /Applications/sshdesk.app`
+          To remove it: `rm -rf /Applications/plydesk.app`
           NOTES
           )" \
             dist/*
