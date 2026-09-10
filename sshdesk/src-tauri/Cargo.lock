@@ -3045,6 +3045,7 @@ dependencies = [
 name = "sshdesk"
 version = "0.1.0"
 dependencies = [
+ "cc",
  "portable-pty",
  "serde",
  "serde_json",

@@ -32,7 +32,7 @@ export interface AppDef {
   /** What this app needs on the remote. Checked at launch. */
   requires?: Requirement[]
   /** Present only for JavaScript apps discovered by the extension loader. */
-  plugin?: { directory: string; version?: string; author?: string }
+  plugin?: { directory: string; version?: string; author?: string; developer?: boolean; revision?: number }
   description?: string
 }
 

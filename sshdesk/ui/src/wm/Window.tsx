@@ -1,6 +1,8 @@
 import { Icon } from './Icon'
 import { useLayoutEffect, useRef, type ReactNode } from 'react'
 import { useWM, type Win } from './store'
+import { layoutRect } from './windowState'
+import { workArea } from './workArea'
 
 const HANDLES: [string, string][] = [
   ['top-0 left-2 right-2 h-1 cursor-ns-resize', 'n'],
@@ -27,7 +29,7 @@ export function Window({ win, children }: { win: Win; children: ReactNode }) {
     const pane = el.current?.parentElement
     if (!pane) return
     focus()
-    dispatch({ t: 'toggleMax', id: win.id, deskW: pane.clientWidth, deskH: pane.clientHeight })
+    dispatch({ t: 'toggleMax', id: win.id, ...workArea(pane) })
   }
 
   // Refit when a machine column or the native window changes size. Observing
@@ -40,8 +42,9 @@ export function Window({ win, children }: { win: Win; children: ReactNode }) {
       const w = current.current
       const width = Math.min(w.w, pane.clientWidth)
       const height = Math.min(w.h, pane.clientHeight)
-      const next = w.maximized
-        ? { x: 0, y: 0, w: pane.clientWidth, h: pane.clientHeight }
+      const area = workArea(pane)
+      const next = w.layout
+        ? layoutRect(w.layout, area.deskW, area.deskH)
         : { x: clamp(w.x, 0, pane.clientWidth - width), y: clamp(w.y, 0, pane.clientHeight - height), w: width, h: height }
       if (Object.entries(next).some(([key, value]) => w[key as 'x' | 'y' | 'w' | 'h'] !== value))
         dispatch({ t: 'geom', id: w.id, ...next })
@@ -50,7 +53,7 @@ export function Window({ win, children }: { win: Win; children: ReactNode }) {
     const observer = new ResizeObserver(fit)
     observer.observe(pane)
     return () => { observer.disconnect(); cleanup.current?.() }
-  }, [dispatch, win.id, win.maximized])
+  }, [dispatch, win.id, win.layout])
 
   function gesture(e: React.PointerEvent, dir?: string) {
     if (e.button !== 0 || win.maximized || cleanup.current) return
@@ -84,7 +87,7 @@ export function Window({ win, children }: { win: Win; children: ReactNode }) {
       if (node.hasPointerCapture(e.pointerId)) node.releasePointerCapture(e.pointerId)
       document.body.classList.remove('desk-dragging', 'desk-resizing')
       cleanup.current = null
-      dispatch({ t: 'geom', id: win.id, ...geometry })
+      dispatch({ t: 'geom', id: win.id, ...geometry, manual: true })
     }
     cleanup.current = end
     node.addEventListener('pointermove', move)
@@ -94,7 +97,7 @@ export function Window({ win, children }: { win: Win; children: ReactNode }) {
   }
 
   return (
-    <section ref={el} data-window data-host={win.host} data-focused={focused}
+    <section ref={el} data-window data-window-id={win.id} data-host={win.host} data-focused={focused} tabIndex={-1}
       aria-label={win.title} onPointerDown={focus} onFocusCapture={focus}
       style={{ left: win.x, top: win.y, width: win.w, height: win.h, zIndex: win.z,
         display: win.minimized ? 'none' : undefined }}

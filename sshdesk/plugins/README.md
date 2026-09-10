@@ -32,6 +32,65 @@ under **Remote Tools**.
 
 ---
 
+## Develop from any local folder
+
+Open **Settings → Developer**, enable **Developer mode**, and choose **Load
+local app…**. Browse to your app folder or paste an absolute path (`~/…` works).
+The selected folder must contain `index.js` and optionally `style.css`.
+Registrations and their enabled/watch settings are saved on this Mac across
+restarts. Nothing is copied into the app bundle and sshdesk does not need to be
+rebuilt for plugin edits.
+
+Each app has **Open**, **Reload**, **Reload on changes**, an enable switch, and
+**Remove registration**. Removing a registration never deletes source files.
+Disabling developer mode unloads local registrations while keeping their paths.
+Existing installed/shipped extensions continue to work.
+
+A reload replaces only that app's content, preserving its windows, positions,
+sizes, host assignments, and minimized/snapped state. Temporary React state resets.
+Save work before reloading. Automatic reload is opt-in; it checks `index.js` and
+`style.css` once a second and waits for two matching file observations before
+loading. It pauses during desktop drag/resize and modal dialogs.
+
+Load errors appear on the app's card. If a new build fails to import, validate,
+or create its component, the previous working definition and CSS remain active.
+Render errors are contained by the app window and also appear in Developer
+settings; reload after fixing the code to reset the error boundary.
+
+Local app IDs must be unique among enabled local apps. Built-in app IDs are
+reserved. Matching a shipped extension's ID temporarily overrides it; disabling
+or removing that local app restores the shipped version. To rename an app ID,
+remove its registration and add it again.
+
+For JSX/TypeScript, use a bundler in watch mode, for example:
+
+```sh
+npx esbuild src/index.jsx --bundle --format=esm --jsx=transform --outfile=index.js --watch
+```
+
+Keep `React` injected through `createApp` as described below. Bundle module
+dependencies into the entry file. The loader evaluates the bundle from a blob
+URL; relative imports, split chunks, and relative image/font URLs do not resolve
+to the local project folder. Inline assets or use the platform's icon system.
+Put component subscriptions, timers, and event handlers in React effects and
+clean them up when unmounted; avoid persistent side effects at module scope.
+This is content reload, not React Fast Refresh.
+
+Use **Settings → Developer → Open DevTools** to inspect the desktop and local
+apps, including in the compiled release app. On macOS this opens WebKit's Web
+Inspector, with Elements, Console, Sources, and Network tools. Local apps share
+the desktop inspector. Bundles include `sshdesk-plugin://` source annotations
+matching their folders, although WebKit can still list imported modules as
+`blob:` scripts. Search Sources for your app name or manifest ID to find its
+code. Embedded web apps such as VS Code have a separate webview and are not
+inspected by this button.
+
+Start with the working [Hello Local example](../examples/hello-app).
+Developer registrations live in `developer-apps.json` in Tauri's app configuration
+directory on this Mac, separately from per-machine appearance settings.
+
+---
+
 ## The three exports
 
 ```js
@@ -387,3 +446,18 @@ export function createApp({ React, html, useApi }) {
 ```
 
 Drop it in, press ⌘R, and it is in the dock.
+
+
+## Development checks
+
+From the sshdesk project directory:
+
+```sh
+node --experimental-vm-modules --test ui/tests/developer.test.mjs
+cargo test --manifest-path src-tauri/Cargo.toml developer::tests
+```
+
+The loader tests cover individual reloads, failed-build recovery, ID conflicts,
+shipped-app restoration, token validation, and automatic reload. Native tests
+cover folder registration, persistence, disabled/unregistered reads, and keeping
+source files when removing registrations.

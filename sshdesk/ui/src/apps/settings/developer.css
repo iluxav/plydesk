@@ -1,0 +1,39 @@
+.settings-nav-icon-developer { background: #76648c; color: #faf3ff; }
+.developer-switch { display: flex; align-items: center; width: 32px; height: 19px; flex-shrink: 0; padding: 2px; border-radius: 12px; background: #ffffff23; box-shadow: inset 0 0 0 1px #ffffff0a; }
+.developer-switch > span { display: block; width: 15px; height: 15px; border-radius: 50%; background: #e8edf3; box-shadow: 0 1px 3px #0004; }
+.developer-switch[aria-checked="true"] { background: var(--color-desk-accent); }
+.developer-switch[aria-checked="true"] > span { transform: translateX(13px); }
+.developer-switch:disabled { opacity: .4; }
+.developer-switch:focus-visible, .developer-folder-input input:focus-visible { outline: 2px solid var(--color-desk-accent); outline-offset: 3px; }
+.developer-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: 27px; margin-bottom: 13px; }
+.developer-toolbar h3 { font-weight: 600; font-size: 12px; }
+.developer-toolbar h3 > span { margin-left: 5px; color: var(--color-desk-dim); font-variant-numeric: tabular-nums; font-weight: 400; }
+.developer-toolbar p { margin-top: 5px; font-size: 10px; color: var(--color-desk-dim); line-height: 1.5; }
+.developer-empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; border: 1px solid var(--color-desk-line); background: #ffffff02; border-radius: 9px; padding: 30px 24px; }
+.developer-empty-icon { display: grid; place-items: center; width: 52px; height: 52px; margin-bottom: 3px; border-radius: 13px; background: color-mix(in srgb, var(--color-desk-accent) 9%, transparent); color: var(--color-desk-accent); }
+.developer-empty strong { font-size: 13px; font-weight: 550; }
+.developer-empty p { max-width: 300px; color: var(--color-desk-dim); font-size: 11px; line-height: 1.6; }
+.developer-empty > span:last-child { color: var(--color-desk-dim); font-size: 10px; }
+.developer-app-list { display: grid; gap: 12px; }
+.developer-app { padding: 15px; background: #ffffff03; border: 1px solid var(--color-desk-line); border-radius: 9px; min-width: 0; }
+.developer-app-heading { display: flex; gap: 11px; align-items: center; }
+.developer-app-heading > div { flex: 1; min-width: 0; }
+.developer-app-heading strong { font-size: 12px; font-weight: 550; overflow-wrap: anywhere; }
+.developer-app-status { display: flex; align-items: center; gap: 6px; font-size: 10px; margin-top: 5px; color: var(--color-desk-dim); }
+.developer-app-status .status-dot { background: currentColor; }
+.developer-app-status.is-ready { color: var(--color-desk-ok); }
+.developer-app-status.has-error { color: var(--color-desk-bad); }
+.developer-app-path { display: block; font-size: 10px; line-height: 1.6; color: var(--color-desk-dim); user-select: text; overflow-wrap: anywhere; margin-top: 12px; }
+.developer-app-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: space-between; align-items: center; border-top: 1px solid var(--color-desk-line); padding-top: 12px; margin-top: 12px; }
+.developer-app-actions > div { display: flex; gap: 6px; align-items: center; margin-left: auto; }
+.developer-watch { display: flex; gap: 7px; align-items: center; font-size: 10px; }
+.developer-watch input { accent-color: var(--color-desk-accent); width: 13px; height: 13px; }
+.developer-watch:has(input:disabled) { opacity: .5; }
+.developer-app-time { margin-top: 9px; color: var(--color-desk-dim); font-size: 9px; font-variant-numeric: tabular-nums; }
+.developer-app-error { margin-top: 12px; padding: 10px 12px; border-radius: 6px; background: #f871710a; font-size: 10px; line-height: 1.6; color: var(--color-desk-bad); }
+.developer-app-error p { margin-top: 4px; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+.developer-app-error small { display: block; color: var(--color-desk-dim); font-size: 10px; margin-top: 7px; }
+.developer-guide pre { background: #0002; padding: 10px 12px; font-size: 10px; line-height: 1.7; border-radius: 5px; margin-top: 12px; user-select: text; }
+.developer-load-description { font-size: 12px; line-height: 1.6; color: var(--color-desk-dim); }
+.developer-folder-input { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.developer-folder-input input { flex: 1; min-width: 0; border: 1px solid var(--color-desk-line); border-radius: 5px; background: #0002; color: var(--color-desk-fg); padding: 8px 9px; font-size: 11px; }

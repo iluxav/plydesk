@@ -60,6 +60,11 @@ export function declareTokens(appId: string, tokens: TokenMap) {
   notify()
 }
 
+export function removeTokenDeclarations(appId: string) {
+  decls.delete(appId)
+  notify()
+}
+
 export function declarations(): Array<[string, TokenMap]> {
   return [...decls.entries()].sort((a, b) => a[0].localeCompare(b[0]))
 }

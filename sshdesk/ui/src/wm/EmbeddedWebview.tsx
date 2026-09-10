@@ -57,7 +57,7 @@ export function EmbeddedWebview({ url, title, onReady, onError }: {
           const visible = rect.width > 1 && height > 1
             && desktopWindow.dataset.focused === 'true'
             && !element.closest('[inert]')
-            && !document.querySelector('[role="menu"], [aria-modal="true"]')
+            && !document.querySelector('[role="menu"], [aria-modal="true"], [data-window-switcher]')
           if (!visible) {
             if (shown) { await view.hide(); shown = false }
             continue

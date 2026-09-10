@@ -4,6 +4,9 @@ import { useContextMenu, type MenuItem } from '../wm/ContextMenu'
 import { useWM } from '../wm/store'
 import { APPS } from './registry'
 import { Icon } from '../wm/Icon'
+import { workArea } from '../wm/workArea'
+import { useKeyboardPreferences } from '../keyboard/preferences'
+import { formatShortcut, type ActionId } from '../keyboard/shortcuts'
 
 export function MenuBar({ hosts, active, onSwitch, onAdd, onDisconnect, onReloadPlugins }: {
   hosts: string[]
@@ -15,6 +18,7 @@ export function MenuBar({ hosts, active, onSwitch, onAdd, onDisconnect, onReload
 }) {
   const menu = useContextMenu()
   const { state, dispatch } = useWM()
+  const { bindings } = useKeyboardPreferences()
   const wins = state.wins.filter(w => w.host === active)
   const front = wins.filter(w => !w.minimized).sort((a, b) => b.z - a.z)[0]
   const application = APPS.find(app => app.id === front?.appId)
@@ -59,6 +63,16 @@ export function MenuBar({ hosts, active, onSwitch, onAdd, onDisconnect, onReload
   const windowMenu: MenuItem[] = [
     { label: 'New window', icon: '+', disabled: !front,
       onSelect: () => { if (front) fw.ui.open(front.appId, { host: active }) } },
+    ...([
+      ['Snap left', 'snap-left', 'left'], ['Snap right', 'snap-right', 'right'],
+      ['Maximize', 'maximize', 'maximized'], ['Restore size', 'restore', 'restore'],
+    ] as const).map(([label, action, layout]) => ({ label, disabled: !front || (layout === 'restore' && !front.restore),
+      shortcut: bindings[action as ActionId] ? formatShortcut(bindings[action as ActionId]) : undefined,
+      onSelect: () => {
+        const pane = front && document.querySelector<HTMLElement>(`[data-window-id="${CSS.escape(front.id)}"]`)?.parentElement
+        if (front && pane) dispatch({ t: 'layout', id: front.id, layout, ...workArea(pane) })
+      } })),
+    { type: 'separator' },
     { label: 'Minimize window', icon: '−', disabled: !front,
       onSelect: () => { if (front) dispatch({ t: 'minimize', id: front.id }) } },
     { label: 'Show desktop', icon: '▱', disabled: !wins.some(w => !w.minimized),

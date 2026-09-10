@@ -16,10 +16,8 @@
         "title": "sshdesk",
         "width": 1280,
         "height": 820,
+        "maximized": true,
         "dragDropEnabled": true,
-        "x": 80,
-        "y": 80,
-        "center": false,
         "label": "main",
         "titleBarStyle": "Overlay",
         "hiddenTitle": true

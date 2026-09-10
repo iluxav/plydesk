@@ -16,7 +16,8 @@ import { Connections } from './Connections'
 import { fw } from '../fw'
 import { useDialog } from '../wm/Dialog'
 import { setPasswordPrompt, resetSdk } from '../ext/sdk'
-import { reloadPlugins, onPluginsChanged } from '../ext/loader'
+import { reloadPlugins, onPluginsChanged, reportPluginError } from '../ext/loader'
+import { KeyboardProvider } from '../keyboard/KeyboardProvider'
 
 export function Desktop() {
   const { state, dispatch } = useWM()
@@ -97,7 +98,10 @@ export function Desktop() {
   }, [themeRev, hosts])
 
   useEffect(() => { fw.ui._installDialogs(dlg) }, [dlg])
-  useEffect(() => onPluginsChanged(() => bumpPlugins(n => n + 1)), [])
+  useEffect(() => onPluginsChanged(removed => {
+    winsRef.current.filter(w => removed.includes(w.appId)).forEach(w => dispatch({ t: 'close', id: w.id }))
+    bumpPlugins(n => n + 1)
+  }), [dispatch])
 
   useEffect(() => {
     setPasswordPrompt(async host =>
@@ -170,7 +174,7 @@ export function Desktop() {
   }
 
   return (
-    <div className="desktop-shell">
+    <KeyboardProvider active={active} onSwitchHost={setActive} disabled={adding}><div className="desktop-shell">
       <div className="absolute inset-0" inert={adding}>
       <MenuBar
         hosts={hosts}
@@ -237,7 +241,7 @@ export function Desktop() {
       {adding && <div className="connection-overlay">
         <Connections connected={hosts} onConnected={connected} onCancel={() => setAdding(false)} />
       </div>}
-    </div>
+    </div></KeyboardProvider>
   )
 }
 
@@ -250,7 +254,8 @@ function DesktopWindow({ win }: { win: Win }) {
   const Component = app.component
   return <Window win={win}>
     <HostScope host={win.host}>
-      <AppBoundary name={app.title}>
+      <AppBoundary key={app.plugin?.revision ?? app.id} name={app.title}
+        onError={app.plugin?.developer ? message => reportPluginError(app.plugin!.directory, message) : undefined}>
         <Requires requires={app.requires} name={app.title}>
           <Component {...(win.props ?? {})} winId={win.id} host={win.host} setTitle={setTitle} />
         </Requires>

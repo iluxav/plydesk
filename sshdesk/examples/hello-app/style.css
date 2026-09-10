@@ -1,0 +1,4 @@
+.hello-local-content { flex: 1; min-height: 0; overflow: auto; padding: 28px; }
+.hello-local-label { font-size: 10px; letter-spacing: .08em; color: var(--color-desk-accent); }
+.hello-local-content h1 { margin: 12px 0; font-size: 22px; font-weight: 600; letter-spacing: -.025em; }
+.hello-local-content p { max-width: 360px; color: var(--color-desk-dim); font-size: 12px; line-height: 1.7; margin-bottom: 20px; }

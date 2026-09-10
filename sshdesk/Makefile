@@ -6,21 +6,31 @@
 BIN     := src-tauri/target/release/sshdesk
 PROBE   := core/target/release/sshdesk-probe
 HOST    ?= iluxa@10.168.168.226
+BUNDLE_FLAGS := --no-bundle
 
-.PHONY: all run build plugins ui-build ui-install dev probe clean kill restart help
+# WebKit needs the regular app identity for VS Code's persistent browser data.
+# Running the loose Mach-O uses a different store and can fail IndexedDB writes.
+ifeq ($(shell uname -s),Darwin)
+BIN := src-tauri/target/release/bundle/macos/sshdesk.app/Contents/MacOS/sshdesk
+BUNDLE_FLAGS := --bundles app
+endif
+
+.PHONY: all run launch build plugins lint-plugins ui-build ui-install dev probe clean kill restart help
 
 all: run
 
 ## run: rebuild (UI + Rust) and launch the app
 #
 # SSHDESK_PLUGINS points at the repo so edits here are picked up. A release
-# build reads the plugins bundled inside the .app instead; a --no-bundle
-# binary has none, which is why this is needed.
+# build launched from Finder reads the plugins bundled inside the .app instead.
 run: kill build
+	@$(MAKE) --no-print-directory launch
+
+launch:
+	@test -x "$(BIN)" || { echo "✗ app not built — run make run first"; exit 1; }
 	@echo "→ launching sshdesk"
-	@SSHDESK_PLUGINS=$(PWD)/plugins $(BIN) > /tmp/sshdesk.log 2>&1 &
-	@sleep 2
-	@pgrep -f 'release/sshdesk$$' >/dev/null \
+	@SSHDESK_PLUGINS="$(CURDIR)/plugins" "$(BIN)" > /tmp/sshdesk.log 2>&1 & \
+		run_pid=$$!; sleep 2; kill -0 $$run_pid 2>/dev/null \
 		&& echo "✓ running — check your screen" \
 		|| { echo "✗ crashed:"; cat /tmp/sshdesk.log; exit 1; }
 
@@ -54,7 +64,7 @@ plugins: lint-plugins
 # empty page because build.rs is not re-run when only ui/dist changes.
 build: plugins
 	@echo "→ building (tauri cli: vite + rust + embed)"
-	@cd src-tauri && node ../ui/node_modules/@tauri-apps/cli/tauri.js build --no-bundle
+	@cd src-tauri && node ../ui/node_modules/@tauri-apps/cli/tauri.js build $(BUNDLE_FLAGS)
 
 ## ui-build: compile the React/Vite frontend to ui/dist only
 ui-build:
@@ -82,12 +92,11 @@ probe-sudo:
 
 ## restart: kill and relaunch without rebuilding
 restart: kill
-	@SSHDESK_PLUGINS=$(PWD)/plugins $(BIN) > /tmp/sshdesk.log 2>&1 &
-	@sleep 2 && echo "✓ relaunched"
+	@$(MAKE) --no-print-directory launch
 
 ## kill: stop any running instance
 kill:
-	@pkill -f 'release/sshdesk$$' 2>/dev/null || true
+	@pkill -f 'release/(bundle/macos/sshdesk\.app/Contents/MacOS/)?sshdesk$$' 2>/dev/null || true
 	@sleep 1
 
 ## clean: remove build artifacts and stale control sockets

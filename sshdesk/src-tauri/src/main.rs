@@ -1,6 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod term;
+mod keyboard;
+mod developer;
 
 use serde::Serialize;
 use sshdesk_core::{
@@ -1014,7 +1016,12 @@ fn main() {
         .manage(term::Terminals::default())
         .manage(Forwards::default())
         .manage(Watchers::default())
+        .manage(developer::DeveloperApps::default())
         .invoke_handler(tauri::generate_handler![
+            developer::developer_apps_get, developer::developer_apps_change,
+            developer::developer_app_read, developer::developer_app_stamps,
+            developer::developer_open_devtools,
+            keyboard::keyboard_configure, keyboard::keyboard_request_access,
             connect, clock, disconnect, snapshot, service_action, kill_process,
             systemd_property, disk_info, sftp_extensions, dbus_call, dbus_get,
             watch_units, stage_for_drag, upload_files,

@@ -8,12 +8,16 @@ import { configKey, declarations, machineConfig, onTokensChanged, resolve, setCo
 import { onPluginsChanged, pluginFailures, reloadPlugins } from '../ext/loader'
 import { SettingsGroup, SettingsModal, SettingsRow, TokenSetting, type SaveSetting } from './settings/SettingControls'
 import './settings/settings.css'
+import { KeyboardSettings } from './settings/KeyboardSettings'
+import { DeveloperSettings } from './settings/DeveloperSettings'
 
 const PAGES = [
   { id: 'appearance', title: 'Appearance', icon: 'lucide:palette', description: 'Colors, window style, and the look of your desktop.' },
   { id: 'wallpaper', title: 'Wallpaper', icon: 'lucide:mountain', description: 'Make this machine’s workspace your own.' },
+  { id: 'keyboard', title: 'Keyboard', icon: 'lucide:keyboard', description: 'Keyboard shortcuts, window snapping, and switching between apps.' },
   { id: 'apps', title: 'Apps & Extensions', icon: 'desk:app', description: 'Your desktop apps, including JavaScript extensions.' },
   { id: 'tools', title: 'Remote Tools', icon: 'lucide:hard-drive', description: 'Supporting software installed by sshdesk on this machine.' },
+  { id: 'developer', title: 'Developer', icon: 'lucide:code-xml', description: 'Build, load, and reload local apps without rebuilding sshdesk.' },
   { id: 'advanced', title: 'Advanced', icon: 'lucide:sliders-horizontal', description: 'Configuration and customization for this workspace.' },
 ]
 const ACCENTS = [
@@ -63,7 +67,7 @@ export function Settings({ setTitle }: { setTitle?: (title: string) => void }) {
   const activeApp = section.startsWith('app:') ? apps.find(app => app.id === section.slice(4)) : undefined
   const appTokens = declarations().find(([id]) => id === activeApp?.id)?.[1] ?? {}
   const deskTokens = declarations().find(([id]) => id === 'desk')?.[1] ?? {}
-  const page = PAGES.find(page => page.id === section) ?? PAGES[2]
+  const page = PAGES.find(page => page.id === section) ?? PAGES[3]
   const picture = resolve('desk.wallpaper', host).value
   const pictureUrl = preview.path === picture ? preview.url : ''
   const read = (name: string) => resolve(`desk.${name}`, host).value
@@ -191,14 +195,14 @@ export function Settings({ setTitle }: { setTitle?: (title: string) => void }) {
         <span className="settings-nav-label">Personalization</span>
         {PAGES.map((item, i) => <div key={item.id}>
           {i === 2 && <span className="settings-nav-label">Workspace</span>}
-          {i === 4 && <span className="settings-nav-label">More</span>}
+          {i === 5 && <span className="settings-nav-label">More</span>}
           <button aria-current={!q && (section === item.id || (activeApp && item.id === 'apps')) ? 'page' : undefined}
             onClick={() => navigate(item.id)}>
             <span className={`settings-nav-icon settings-nav-icon-${item.id}`}><Icon id={item.icon} size={16} /></span>{item.title}
           </button>
         </div>)}
       </nav>
-      <div className="settings-sidebar-bottom"><span className="status-dot" /><span>Personal settings<br /><small>For this machine</small></span></div>
+      <div className="settings-sidebar-bottom"><span className="status-dot" /><span>Personal settings<br /><small>{['keyboard', 'developer'].includes(section) ? 'On this Mac · All machines' : 'For this machine'}</small></span></div>
     </aside>
 
     <main className="settings-main">
@@ -246,7 +250,7 @@ export function Settings({ setTitle }: { setTitle?: (title: string) => void }) {
           </SettingsGroup>
           <p className="settings-footnote">The picture fills this machine’s desktop. Other machines keep their own wallpaper.</p>
           {picture && !pictureUrl && <p className="settings-footnote">The preview is loading, or the picture is no longer available on this Mac.</p>}
-        </> : section === 'apps' ? <>
+        </> : section === 'developer' ? <DeveloperSettings /> : section === 'keyboard' ? <KeyboardSettings /> : section === 'apps' ? <>
           <div className="settings-app-toolbar"><div className="settings-segmented" aria-label="App type">
             {(['all', 'builtin', 'extensions'] as const).map(value => <button key={value} aria-pressed={filter === value}
               onClick={() => setFilter(value)}>{value === 'all' ? 'All apps' : value === 'builtin' ? 'Built-in' : 'Extensions'}</button>)}
@@ -265,7 +269,7 @@ export function Settings({ setTitle }: { setTitle?: (title: string) => void }) {
               <strong>{failure.name}</strong><p>{failure.message}</p><code>{failure.directory}</code>
             </div>)}
           </SettingsGroup>}
-          <button className="settings-link-row" onClick={() => setInstallHelp(true)}><Icon id="lucide:puzzle" size={17} /><span>Add a JavaScript extension</span><Icon id="lucide:chevron-right" size={14} /></button>
+          <button className="settings-link-row" onClick={() => navigate('developer')}><Icon id="lucide:puzzle" size={17} /><span>Develop a local app</span><Icon id="lucide:chevron-right" size={14} /></button>
           <p className="settings-footnote">Extension apps join the desktop and provide their own settings here.</p>
         </> : activeApp ? <>
           <div className="settings-app-heading"><AppIcon app={activeApp} host={host} large /><div><h2>{activeApp.title}</h2>
@@ -325,7 +329,7 @@ export function Settings({ setTitle }: { setTitle?: (title: string) => void }) {
       <footer className={`settings-status ${error ? 'has-error' : ''}`} role="status">
         {busy ? <><span className="ui-spinner" /><span>Applying changes…</span></> : error ? <><Icon id="lucide:circle-alert" size={14} /><span className="select-text">{error}</span></>
           : <><Icon id="lucide:check" size={13} /><span>{note || 'Changes save automatically'}</span></>}
-        <span className="settings-status-machine">{machineName}</span>
+        <span className="settings-status-machine">{['keyboard', 'developer'].includes(section) ? 'This Mac' : machineName}</span>
       </footer>
     </main>
     {installHelp && <SettingsModal title="Add a JavaScript extension" onClose={() => setInstallHelp(false)} wide>

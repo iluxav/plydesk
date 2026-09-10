@@ -16,13 +16,46 @@ ui (webview) ──IPC──▶   ├─ forwarded D-Bus socket ▶ systemd    (
 
 ```sh
 make run     # rebuild (UI + Rust) and launch
+make restart # relaunch the existing build
 make help    # all targets
 ```
 
 **Tauri embeds `ui/index.html` into the binary at build time.** Editing the HTML has
 no effect until you rebuild — always use `make run`, never just relaunch the binary.
 
+On macOS, `make run` builds and launches `src-tauri/target/release/bundle/macos/sshdesk.app`.
+`make restart` uses the same app bundle, so embedded apps such as VS Code keep the
+same browser profile. Launch this bundle when testing saved settings; the loose
+executable and copies with a different bundle identifier use separate WebKit data.
+`make dev` is still available for hot reload and uses a separate development profile.
+
 Enter `user@host`, hit Connect. Sudo password is only needed for actions that change state.
+
+## Keyboard navigation
+
+Open **Settings → Keyboard** to record, remove, or reset desktop shortcuts. They
+are saved on this Mac and apply across connected machines, including embedded VS Code.
+
+| Action | Default shortcut |
+| --- | --- |
+| Snap left / right | Option-Command-Left / Right |
+| Maximize / restore | Option-Command-Up / Down |
+| Next / previous window | Command-backtick / Shift-Command-backtick |
+| Minimize | Option-Command-M |
+
+Hold the switch shortcut's modifier to browse recent windows, then release to
+select. Escape cancels. Minimized windows and windows on other connected machines
+are included. Layout actions also appear in the Window menu.
+
+For **Command-Tab**, choose **Use ⌘Tab** in Keyboard settings and allow sshdesk in
+**macOS System Settings → Privacy & Security → Accessibility**. The native input
+layer intercepts assigned combinations only while sshdesk's main window is focused;
+clicking outside returns control to macOS. Capture is off by default. Normal
+desktop shortcuts use an app-local monitor and do not require Accessibility access.
+Command-Q and Command-Option-Escape remain available. No keystrokes are logged.
+
+Run the keyboard and window-layout checks with Node 24:
+`node --test ui/tests/keyboard.test.mjs`.
 
 ## The three decisions that matter
 

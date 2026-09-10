@@ -85,7 +85,6 @@
 .terminal-surface { flex: 1; min-height: 0; overflow: hidden; padding: 12px; }
 .files-breadcrumbs .files-go-to { margin-left: auto; flex-shrink: 0; font-size: 10px; color: var(--color-desk-dim); }
 .embedded-webview { flex: 1; min-height: 0; position: relative; overflow: hidden; }
-.desktop-window.is-maximized:has(.embedded-webview) { height: calc(100% - 86px) !important; }
 .embedded-webview-placeholder { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 12px; color: var(--color-desk-dim); background: var(--color-desk-panel); font-size: 11px; }
 .embedded-webview-placeholder > span { font: 32px/1.5 ui-monospace, monospace; color: var(--color-desk-accent); }

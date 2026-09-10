@@ -11,7 +11,7 @@ import { Component, type ErrorInfo, type ReactNode } from 'react'
  * This is deliberately a class: error boundaries have no hook equivalent.
  */
 export class AppBoundary extends Component<
-  { name: string; children: ReactNode },
+  { name: string; children: ReactNode; onError?: (message: string) => void },
   { error: Error | null; info: string }
 > {
   state = { error: null as Error | null, info: '' }
@@ -23,6 +23,7 @@ export class AppBoundary extends Component<
   componentDidCatch(error: Error, info: ErrorInfo) {
     // The console is the only place a stack survives in a release build.
     console.error(`[${this.props.name}] crashed:`, error, info.componentStack)
+    this.props.onError?.(String(error))
     this.setState({ error, info: (info.componentStack ?? '').trim().split('\n').slice(0, 6).join('\n') })
   }
 
