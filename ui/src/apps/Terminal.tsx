@@ -5,12 +5,13 @@ import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
 import { useFw } from '../wm/host'
 import { onTokensChanged, resolve } from '../fw/tokens'
+import { useWM } from '../wm/store'
+import { closesOnExit, type Shortcut } from '../shortcuts/model'
 
 let seq = 0
 
 /** base64 -> bytes -> string, since PTY chunks can split a UTF-8 sequence. */
-const decoder = new TextDecoder('utf-8', { fatal: false })
-function decode(b64: string): string {
+function decode(decoder: TextDecoder, b64: string): string {
   const bin = atob(b64)
   const bytes = new Uint8Array(bin.length)
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
@@ -18,16 +19,21 @@ function decode(b64: string): string {
   return decoder.decode(bytes, { stream: true })
 }
 
-export function Terminal({ setTitle }: { setTitle?: (t: string) => void }) {
+export function Terminal({ setTitle, shortcut, winId }: { setTitle?: (t: string) => void; shortcut?: Extract<Shortcut, { kind: 'tui' }>; winId?: string }) {
   const fw = useFw()
   const host = useRef<HTMLDivElement>(null)
-  const idRef = useRef(`term-${++seq}`)
+  const { dispatch } = useWM()
+  const [attempt, setAttempt] = useState(0)
+  const [finished, setFinished] = useState(false)
   const [status, setStatus] = useState('Opening session…')
   const [dimensions, setDimensions] = useState('')
 
   useEffect(() => {
     if (!host.current) return
-    const id = idRef.current
+    const id = `term-${++seq}`
+    const decoder = new TextDecoder('utf-8', { fatal: false })
+    setStatus('Opening session…'); setFinished(false)
+    const closeWindow = () => { if (winId) dispatch({ t: 'close', id: winId }) }
     const target = fw.host.current()
 
     const term = new Xterm({
@@ -62,9 +68,10 @@ export function Terminal({ setTitle }: { setTitle?: (t: string) => void }) {
     updateTheme()
     const offTheme = onTokensChanged(updateTheme)
 
-    setTitle?.(`Terminal — ${target}`)
+    setTitle?.(shortcut?.name || `Terminal — ${target}`)
 
-    let disposed = false
+    let disposed = false, exited = false, opened = false
+    let closeOnCtrlC = shortcut?.closeOnCtrlC
     const unlistens: Array<() => void> = []
 
     void (async () => {
@@ -78,25 +85,40 @@ export function Terminal({ setTitle }: { setTitle?: (t: string) => void }) {
         }
 
         const un1 = await listen('term:data', (e: any) => {
-          if (e.payload.id === id) term.write(decode(e.payload.b64))
+          if (!disposed && e.payload.id === id) term.write(decode(decoder, e.payload.b64))
         })
+        unlistens.push(un1)
         const un2 = await listen('term:exit', (e: any) => {
-          if (e.payload.id === id) { term.write('\r\n\x1b[2m[session closed]\x1b[0m\r\n'); setStatus('Session closed') }
+          if (disposed || e.payload.id !== id) return
+          exited = true
+          if (shortcut && closesOnExit(e.payload.code)) { closeWindow(); return }
+          const message = shortcut ? `Command exited${e.payload.code == null ? '' : ` with code ${e.payload.code}`}` : 'Session closed'
+          term.write(`\r\n\x1b[2m[${message.toLowerCase()}]\x1b[0m\r\n`)
+          setStatus(message); setFinished(true)
         })
-        unlistens.push(un1, un2)
+        unlistens.push(un2)
         if (disposed) { un1(); un2(); return }
 
         // Before layout settles xterm reports 0 — never ask for a 0x0 pty.
         const cols = term.cols > 0 ? term.cols : 80
         const rows = term.rows > 0 ? term.rows : 24
-        await fw.term.open(id, target, cols, rows)
-        if (!disposed) { setStatus('SSH session'); setDimensions(`${cols} × ${rows}`) }
+        const launch = await fw.term.open(id, target, cols, rows, shortcut?.id)
+        if (disposed) { await fw.term.close(id); return }
+        opened = true
+        if (launch) { closeOnCtrlC = launch.closeOnCtrlC; setTitle?.(launch.name) }
+        if (!exited) { setStatus(launch?.command || 'SSH session'); setDimensions(`${cols} × ${rows}`) }
 
-        term.onData(d => { void fw.term.write(id, d) })
+        term.onData(d => {
+          if (exited) return
+          const write = fw.term.write(id, d).catch(() => {})
+          if (closeOnCtrlC && d.includes('\x03')) void write.finally(closeWindow)
+        })
         term.focus()
       } catch (err) {
-        if (!disposed) setStatus('Connection error')
-        term.write(`\r\n\x1b[31m${String(err)}\x1b[0m\r\n`)
+        if (!disposed) {
+          setStatus('Couldn’t start session'); setFinished(true)
+          term.write(`\r\n\x1b[31m${String(err)}\x1b[0m\r\n`)
+        }
       }
     })()
 
@@ -106,7 +128,7 @@ export function Terminal({ setTitle }: { setTitle?: (t: string) => void }) {
       try {
         fit.fit()
         setDimensions(`${term.cols} × ${term.rows}`)
-        void fw.term.resize(id, term.cols, term.rows)
+        if (opened && !exited) void fw.term.resize(id, term.cols, term.rows).catch(() => {})
       } catch { /* element detached */ }
     })
     ro.observe(host.current)
@@ -116,12 +138,12 @@ export function Terminal({ setTitle }: { setTitle?: (t: string) => void }) {
       ro.disconnect()
       offTheme()
       unlistens.forEach(u => u())
-      void fw.term.close(id)
+      void fw.term.close(id).catch(() => {})
       term.dispose()
     }
-  }, [fw, setTitle])
+  }, [fw, setTitle, shortcut, winId, dispatch, attempt])
 
   return <div className="desk-app"><div ref={host} className="terminal-surface" />
-    <footer className="app-statusbar"><span>{status}</span><span className="app-status-optional">{fw.host.current()}</span><span className="app-status-end">{dimensions}</span></footer>
+    <footer className="app-statusbar"><span className="terminal-status" title={status}>{status}</span>{shortcut && finished && <button className="shortcut-status-button" onClick={() => setAttempt(n => n + 1)}>Run again</button>}<span className="app-status-optional">{fw.host.current()}</span><span className="app-status-end">{dimensions}</span></footer>
   </div>
 }

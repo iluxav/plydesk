@@ -106,7 +106,7 @@ fn validate_manifest(m: &Manifest) -> Result<(), String> {
     if m.schema_version != 1 { return Err("Unsupported manifest schemaVersion; expected 1".into()); }
     if m.id.is_empty() || m.id.len() > 80 || !m.id.as_bytes()[0].is_ascii_lowercase()
         || !m.id.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_')
-        || RESERVED.contains(&m.id.as_str()) { return Err("Invalid or reserved app ID".into()); }
+        || (RESERVED.contains(&m.id.as_str()) || m.id.starts_with("shortcut-")) { return Err("Invalid or reserved app ID".into()); }
     if m.name.trim().is_empty() || m.name.len() > 100 || m.version.trim().is_empty() || m.version.len() > 80 {
         return Err("App name and version are required (maximum 100 and 80 characters)".into());
     }
@@ -667,6 +667,9 @@ fn watch_units(app: &tauri::AppHandle, label: &str, s: &Arc<Session>) -> Result<
 pub async fn runtime_snapshot(app: tauri::AppHandle, webview: Webview, label: String, embedded: Option<bool>) -> Result<String, String> {
     desktop(&webview)?; let s = session(&app,&label)?;
     let label = if embedded == Some(true) { lock(&s.embedded)?.clone().ok_or("Embedded view is closed")? } else { label };
+    snapshot_view(&app, label).await
+}
+pub(crate) async fn snapshot_view(app: &tauri::AppHandle, label: String) -> Result<String, String> {
     #[cfg(target_os = "macos")]
     {
         use std::{ffi::{c_void, c_char, CStr}, sync::mpsc};

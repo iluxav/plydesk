@@ -7,6 +7,7 @@ import { ImageViewer } from '../apps/ImageViewer'
 import { Packages } from '../apps/Packages'
 import { mimeMatches, mimeOf } from '../fw/mime'
 import type { Requirement } from '../fw'
+import type { Shortcut } from '../shortcuts/model'
 
 /** An app is just a React component plus how to launch it. */
 export interface AppDef {
@@ -33,6 +34,7 @@ export interface AppDef {
   requires?: Requirement[]
   /** Present only for JavaScript apps discovered by the extension loader. */
   plugin?: { directory: string; version?: string; author?: string; developer?: boolean; revision?: number; permissions?: string[] }
+  shortcut?: Shortcut
   description?: string
 }
 

@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod term;
+mod shortcuts;
 mod keyboard;
 mod developer;
 mod runtime;
@@ -705,12 +706,15 @@ fn term_open(
     target: String,
     cols: u16,
     rows: u16,
-) -> Result<(), String> {
+    shortcut_id: Option<String>,
+) -> Result<Option<shortcuts::Shortcut>, String> {
     let ctl = {
         let map = hosts.0.lock().map_err(|e| e.to_string())?;
         map.get(&target).ok_or("not connected")?.control_path().to_string()
     };
-    term::open(&app, &terms, id, &target, &ctl, cols, rows)
+    let launch = shortcut_id.map(|id| shortcuts::terminal_launch(&app, &id, &target)).transpose()?;
+    term::open(&app, &terms, id, &target, &ctl, cols, rows, launch.as_ref().map(|(_, command)| command.as_str()))?;
+    Ok(launch.map(|(shortcut, _)| shortcut))
 }
 
 #[tauri::command]
@@ -1042,6 +1046,7 @@ fn main() {
         })
         .manage(Hosts::default())
         .manage(term::Terminals::default())
+        .manage(shortcuts::Shortcuts::default())
         .manage(Forwards::default())
         .manage(Watchers::default())
         .manage(developer::DeveloperApps::default())
@@ -1050,6 +1055,8 @@ fn main() {
         .register_uri_scheme_protocol("appview", runtime::protocol)
         .invoke_handler({
             let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
+            shortcuts::shortcuts_list, shortcuts::shortcuts_save, shortcuts::shortcuts_remove,
+            shortcuts::shortcut_web_open, shortcuts::shortcut_web_close, shortcuts::shortcut_web_snapshot, shortcuts::shortcut_web_browser,
             index::index_build, index::index_search, index::index_status,
             runtime::runtime_prepare, runtime::runtime_discard, runtime::runtime_start,
             runtime::runtime_bootstrap, runtime::runtime_list, runtime::runtime_context,

@@ -4,6 +4,8 @@ import { APPS } from './registry'
 import { useWM } from '../wm/store'
 import { useContextMenu, type MenuItem } from '../wm/ContextMenu'
 import { fw } from '../fw'
+import { availableOn } from '../shortcuts/model'
+import { editShortcut } from '../shortcuts/store'
 
 export function Dock({ host }: { host: string }) {
   const [shown, setShown] = useState(false)
@@ -44,6 +46,7 @@ export function Dock({ host }: { host: string }) {
     const wins = mine.filter(w => w.appId === appId)
     return [
       { label: 'New window', icon: '+', onSelect: () => launch(appId) },
+      ...(APPS.find(a => a.id === appId)?.shortcut ? [{ label: 'Edit shortcut…', onSelect: () => editShortcut(appId) }] : []),
       ...(wins.length ? [
         { type: 'separator' as const },
         ...wins.map(w => ({
@@ -53,7 +56,7 @@ export function Dock({ host }: { host: string }) {
       ] : []),
     ]
   }
-  const apps = APPS.filter(app => !app.hidden || mine.some(w => w.appId === app.id))
+  const apps = APPS.filter(app => availableOn(app.shortcut, host) && (!app.hidden || mine.some(w => w.appId === app.id)))
 
   return <>
     {!open && <div className="dock-reveal" onPointerEnter={reveal} />}

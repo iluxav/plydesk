@@ -33,7 +33,7 @@ export function SettingsGroup({ title, description, children }: { title?: string
 }
 
 export function SettingsRow({ label, description, children, id }: {
-  label: string; description?: string; children: ReactNode; id?: string
+  label: string; description?: string; children?: ReactNode; id?: string
 }) {
   return <div className="settings-row" data-setting={id}>
     <div className="settings-row-label"><span>{label}</span>{description && <small>{description}</small>}</div>
@@ -137,7 +137,7 @@ function ValueEditor({ title, id, decl, initial, resolved, onClose, onApply, dis
   </SettingsModal>
 }
 
-function IconPicker({ title, current, onPick, onClose, disabled }: {
+export function IconPicker({ title, current, onPick, onClose, disabled }: {
   title: string; current: string; onPick: (value: string) => Promise<void>; onClose: () => void; disabled: boolean
 }) {
   const [query, setQuery] = useState('')

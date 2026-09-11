@@ -1,0 +1,35 @@
+.shortcut-choices, .shortcut-form { padding: 20px; display: flex; flex-direction: column; gap: 17px; }
+.shortcut-choices p, .shortcut-form p { color: var(--color-desk-dim); font-size: 12px; line-height: 1.6; margin: 0; }
+.shortcut-choices > button { display: flex; align-items: center; gap: 16px; padding: 20px 16px; text-align: left; border: 1px solid var(--color-desk-line); border-radius: 9px; background: #ffffff03; }
+.shortcut-choices > button:hover { background: var(--color-desk-selection); border-color: var(--color-desk-accent); }
+.shortcut-choices > button > span { flex: 1; }
+.shortcut-choices strong { display: block; font-size: 14px; font-weight: 550; }
+.shortcut-choices small { display: block; margin-top: 5px; font-size: 12px; line-height: 1.5; color: var(--color-desk-dim); }
+.shortcut-form label { display: flex; flex-direction: column; gap: 7px; font-size: 12px; font-weight: 500; }
+.shortcut-form input:not([type="checkbox"]), .shortcut-form select, .shortcut-form textarea { width: 100%; min-width: 0; border: 1px solid var(--color-desk-line); border-radius: 5px; background: var(--color-desk-bg); color: var(--color-desk-fg); padding: 9px 10px; font-size: 12px; font-weight: 400; }
+.shortcut-form input:focus, .shortcut-form select:focus, .shortcut-form textarea:focus { outline: 2px solid var(--color-desk-accent); outline-offset: 1px; }
+.shortcut-identity { display: flex; gap: 15px; align-items: end; }
+.shortcut-identity label { flex: 1; min-width: 0; }
+.shortcut-icon { width: 55px; height: 55px; flex-shrink: 0; }
+.shortcut-optional { display: inline; color: var(--color-desk-dim); font-size: 11px; font-weight: 400; }
+.shortcut-form .shortcut-check { flex-direction: row; align-items: flex-start; gap: 10px; }
+.shortcut-check input { margin-top: 2px; accent-color: var(--color-desk-accent); }
+.shortcut-check small { display: block; margin-top: 5px; color: var(--color-desk-dim); font-weight: 400; }
+.shortcut-form summary { cursor: pointer; font-size: 12px; color: var(--color-desk-dim); }
+.shortcut-form details[open] summary { margin-bottom: 12px; }
+.shortcut-form details p { margin-top: 9px; }
+.shortcut-command { font-family: ui-monospace, monospace; }
+.shortcut-spacer { flex: 1; }
+.shortcut-footer-button { margin-left: auto; white-space: nowrap; }
+.web-shortcut-surface { flex: 1; min-height: 0; display: flex; }
+
+.shortcut-editor { min-height: 0; display: flex; flex-direction: column; }
+.shortcut-form { overflow: auto; min-height: 0; }
+.shortcut-editor > footer { display: flex; gap: 8px; padding: 13px 20px; border-top: 1px solid var(--color-desk-line); flex-shrink: 0; }
+.web-shortcut-preview { width: 100%; height: 100%; object-fit: fill; pointer-events: none; }
+.web-shortcut-status, .terminal-status { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.web-shortcut-status { flex: 1; }
+.shortcut-status-button { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; padding: 3px 6px; border-radius: 4px; color: var(--color-desk-fg); }
+.shortcut-status-button:hover { background: var(--color-desk-selection); }
+.shortcut-status-button:disabled { opacity: .45; }
+.shortcut-status-button:focus-visible { outline: 2px solid var(--color-desk-accent); }

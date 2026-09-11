@@ -5,6 +5,8 @@ import { Icon } from '../wm/Icon'
 import { useModalFocus } from '../wm/useModalFocus'
 import { actionFor, matchApps, mergeResults, parentOf, step, type LauncherItem } from './launcherModel'
 import './launcher.css'
+import { availableOn, shortcutKind } from '../shortcuts/model'
+import { editShortcut, onShortcutsChanged } from '../shortcuts/store'
 
 const ROWS = 12
 
@@ -19,6 +21,8 @@ export function Launcher({ host, open, onClose }: { host: string; open: boolean;
   const [query, setQuery] = useState('')
   const [items, setItems] = useState<LauncherItem[]>([])
   const [index, setIndex] = useState(0)
+  const [revision, setRevision] = useState(0)
+  useEffect(() => onShortcutsChanged(() => setRevision(n => n + 1)), [])
   const [status, setStatus] = useState<IndexStatus | null>(null)
   const panel = useRef<HTMLDivElement>(null)
   const list = useRef<HTMLUListElement>(null)
@@ -29,7 +33,7 @@ export function Launcher({ host, open, onClose }: { host: string; open: boolean;
   // native index, which answers in milliseconds, so there is no debounce.
   useEffect(() => {
     if (!open) return
-    const apps = matchApps(APPS, query)
+    const apps = matchApps(APPS.filter(a => availableOn(a.shortcut, host)), query)
     const q = query.trim()
     if (!q) { setItems(mergeResults(apps, [], ROWS)); setIndex(0); return }
     const id = ++request.current
@@ -39,7 +43,7 @@ export function Launcher({ host, open, onClose }: { host: string; open: boolean;
       setItems(mergeResults(apps, hits, ROWS)); setIndex(0)
     }).catch(() => { if (live && id === request.current) { setItems(mergeResults(apps, [], ROWS)); setIndex(0) } })
     return () => { live = false }
-  }, [open, query, host])
+  }, [open, query, host, revision])
 
   // The index is built on connect; a machine connected before that, or one
   // whose walk failed, gets another attempt when the bar opens.
@@ -93,7 +97,7 @@ export function Launcher({ host, open, onClose }: { host: string; open: boolean;
           onPointerMove={() => { if (i !== index) setIndex(i) }} onClick={e => activate(item, e.metaKey)}>
           {item.kind === 'app'
             ? <><span className={`app-tile app-tile-${item.id} launcher-tile`}><Icon token={`${item.id}.app`} host={host} fallback={item.icon} size={20} /></span>
-              <span className="launcher-text"><strong>{item.title}</strong><small>Application</small></span></>
+              <span className="launcher-text"><strong>{item.title}</strong><small>{APPS.find(a => a.id === item.id)?.shortcut ? shortcutKind(APPS.find(a => a.id === item.id)!.shortcut!) : 'Application'}</small></span></>
             : <><span className="launcher-tile launcher-file"><Icon token={item.dir ? 'files.directory' : 'files.file'} host={host} size={20} /></span>
               <span className="launcher-text"><strong>{item.name}</strong><small title={item.path}>{parentOf(item.path)}</small></span></>}
           {i === index && <span className="launcher-hint">{item.kind === 'app' ? '↩ Open' : '↩ Open · ⌘↩ Reveal'}</span>}
@@ -105,6 +109,7 @@ export function Launcher({ host, open, onClose }: { host: string; open: boolean;
           : status?.count ? `${status.count.toLocaleString()} names in your home folder${status.truncated ? ' (first 200,000)' : ''}`
           : status?.error ? `File search is unavailable on ${machine}: ${status.error}`
           : 'File search starts once the home folder is indexed'}
+        <button className="settings-button shortcut-footer-button" onClick={() => { onClose(); editShortcut() }}><Icon id="lucide:plus" size={13} />Create app</button>
       </footer>
     </div>
   </div>

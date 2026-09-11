@@ -72,6 +72,28 @@ See [`plugins/README.md`](plugins/README.md) for the plugin guide and the
 security model, and [`examples/hello-app`](examples/hello-app) for a starting
 point.
 
+You can also create shortcuts without writing a plugin. Choose **Applications
+→ Create app shortcut**, **Create app** in the launcher, or **Settings → Apps &
+Extensions → Create app**:
+
+- **Web app shortcut:** choose a name, icon, and HTTP(S) URL. The website opens
+  inside a Plydesk window without an address bar. Same-origin links stay inside;
+  other origins and new-window links open the default browser. Add explicit
+  origins under Additional domains for related pages or login redirects.
+  Website storage persists, and web pages receive no Plydesk SDK permissions.
+- **TUI shortcut:** choose a machine, command, icon, and optional working
+  directory. It runs through that machine’s login shell in a dedicated terminal.
+  Successful exits and interrupt exit code 130 close the window; failures keep
+  their output and offer Run again. Enable Always close on Ctrl-C for tools that
+  otherwise handle that key themselves. Commands run with your SSH user’s access.
+
+Web shortcuts appear on every connected machine’s desktop; TUI shortcuts appear
+on their assigned machine. Edit or remove them in Apps & Extensions, or edit
+from a dock icon’s context menu. Changes apply on the next launch or retry;
+removing a shortcut closes its windows but keeps website data and remote files.
+Definitions are stored in `shortcuts.json` in Tauri’s application configuration
+directory (`~/Library/Application Support/dev.plydesk.app` on macOS).
+
 ## Building
 
 ```sh

@@ -2,20 +2,27 @@ import { useLayoutEffect, useRef, useState } from 'react'
 import { Webview } from '@tauri-apps/api/webview'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { LogicalPosition, LogicalSize } from '@tauri-apps/api/dpi'
+import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 
 let nextView = 0
+export type WebLoad = { label: string; url: string; loading: boolean }
 
 /** A first-party webview inside a desktop window, with the desktop owning its lifetime. */
-export function EmbeddedWebview({ url, title, onReady, onError }: {
+export function EmbeddedWebview({ url, title, shortcutId, onCreated, onLoad, onReady, onError }: {
   url: string
   title: string
+  shortcutId?: string
+  onCreated?: (label: string) => void
+  onLoad?: (state: WebLoad) => void
   onReady?: () => void
   onError?: (message: string) => void
 }) {
   const slot = useRef<HTMLDivElement>(null)
-  const callbacks = useRef({ onReady, onError })
+  const callbacks = useRef({ onCreated, onLoad, onReady, onError })
   const [error, setError] = useState('')
-  useLayoutEffect(() => { callbacks.current = { onReady, onError } })
+  const [preview, setPreview] = useState('')
+  useLayoutEffect(() => { callbacks.current = { onCreated, onLoad, onReady, onError } })
 
   useLayoutEffect(() => {
     const element = slot.current
@@ -30,7 +37,12 @@ export function EmbeddedWebview({ url, title, onReady, onError }: {
     let frame = 0
     let previousBounds: number[] = []
     let view: Webview | undefined
+    let offLoad: (() => void) | undefined
+    const close = (current: Webview) => shortcutId
+      ? invoke('shortcut_web_close', { label: current.label }).catch(() => {})
+      : current.close().catch(() => {})
     setError('')
+    setPreview('')
 
     const fail = (reason: unknown) => {
       if (disposed) return
@@ -59,7 +71,13 @@ export function EmbeddedWebview({ url, title, onReady, onError }: {
             && !element.closest('[inert]')
             && !document.querySelector('[role="menu"], [aria-modal="true"], [data-window-switcher]')
           if (!visible) {
-            if (shown) { await view.hide(); shown = false }
+            if (shown) {
+              if (shortcutId) {
+                const snapshot = await invoke<string>('shortcut_web_snapshot', { label: view.label }).catch(() => '')
+                if (!disposed && snapshot) setPreview(snapshot)
+              }
+              await view.hide(); shown = false
+            }
             continue
           }
           const bounds = [rect.x, rect.y, rect.width, height].map(Math.round)
@@ -93,7 +111,37 @@ export function EmbeddedWebview({ url, title, onReady, onError }: {
       attributeFilter: ['style', 'class', 'data-focused', 'inert', 'aria-modal', 'role'] })
     window.addEventListener('resize', schedule)
 
-    try {
+    const prepare = async (current: Webview) => {
+      created = true
+      if (disposed) { await close(current); return }
+      try {
+        await current.setAutoResize(false)
+        await current.hide()
+        ready = true
+        callbacks.current.onCreated?.(current.label)
+        await sync()
+        if (!disposed) callbacks.current.onReady?.()
+      } catch (reason) { fail(reason) }
+    }
+    if (shortcutId) {
+      void (async () => {
+        const loads = new Map<string, WebLoad>()
+        offLoad = await listen<WebLoad>('shortcut-web-load', ({ payload }) => {
+          if (disposed) return
+          if (payload.label === view?.label) callbacks.current.onLoad?.(payload)
+          else if (!view) loads.set(payload.label, payload)
+        })
+        if (disposed) { offLoad(); return }
+        const label = await invoke<string>('shortcut_web_open', { id: shortcutId })
+        if (disposed) { await invoke('shortcut_web_close', { label }); return }
+        view = await Webview.getByLabel(label) ?? undefined
+        if (!view) { await invoke('shortcut_web_close', { label }); throw new Error('The website window could not be created.') }
+        const load = loads.get(label)
+        if (load) callbacks.current.onLoad?.(load)
+        loads.clear()
+        await prepare(view)
+      })().catch(fail)
+    } else try {
       const parsed = new URL(url)
       if (parsed.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(parsed.hostname))
         throw new Error('Embedded apps must use a local SSH-forwarded address.')
@@ -102,17 +150,7 @@ export function EmbeddedWebview({ url, title, onReady, onError }: {
         focus: false, dragDropEnabled: false,
       })
       const current = view
-      void current.once('tauri://created', async () => {
-        created = true
-        if (disposed) { await current.close().catch(() => {}); return }
-        try {
-          await current.setAutoResize(false)
-          await current.hide()
-          ready = true
-          await sync()
-          if (!disposed) callbacks.current.onReady?.()
-        } catch (reason) { fail(reason) }
-      })
+      void current.once('tauri://created', () => prepare(current))
       void current.once('tauri://error', event => fail(event.payload))
     } catch (reason) { fail(reason) }
 
@@ -121,16 +159,17 @@ export function EmbeddedWebview({ url, title, onReady, onError }: {
       cancelAnimationFrame(frame)
       resize.disconnect()
       mutations.disconnect()
+      offLoad?.()
       window.removeEventListener('resize', schedule)
-      if (created) void view?.close().catch(() => {})
+      if (created && view) void close(view)
     }
-  }, [url])
+  }, [url, shortcutId])
 
   return <div ref={slot} className="embedded-webview" aria-label={title}>
-    <div className="embedded-webview-placeholder">
+    {preview && !error ? <img className="web-shortcut-preview" src={preview} alt={`${title} preview`} /> : <div className="embedded-webview-placeholder">
       <span aria-hidden="true">{'</>'}</span>
       <strong>{title}</strong>
-      <p>{error || 'Select this window to continue editing.'}</p>
-    </div>
+      <p>{error || 'Select this window to continue.'}</p>
+    </div>}
   </div>
 }

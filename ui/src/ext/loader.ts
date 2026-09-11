@@ -76,6 +76,7 @@ async function prepare(p: RawPlugin, developer = false): Promise<Prepared> {
   for (const value of [m.window?.w, m.window?.h]) {
     if (value !== undefined && (typeof value !== 'number' || !Number.isFinite(value) || value <= 0)) throw new Error('App window dimensions must be positive numbers.')
   }
+  if (m.id.startsWith('shortcut-')) throw new Error('The shortcut namespace is reserved.')
   if (m.tokens) for (const [name, token] of Object.entries(m.tokens)) {
     if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(name) || !token || !['icon','color','length','image'].includes(token.type)
       || typeof token.default !== 'string' || typeof token.label !== 'string') throw new Error(`Invalid token: ${name}`)

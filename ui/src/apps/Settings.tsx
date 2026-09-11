@@ -11,12 +11,14 @@ import { SettingsGroup, SettingsModal, SettingsRow, TokenSetting, type SaveSetti
 import './settings/settings.css'
 import { KeyboardSettings } from './settings/KeyboardSettings'
 import { DeveloperSettings } from './settings/DeveloperSettings'
+import { editShortcut, onShortcutsChanged, reloadShortcuts, removeShortcut, shortcutsError } from '../shortcuts/store'
+import { shortcutKind } from '../shortcuts/model'
 
 const PAGES = [
   { id: 'appearance', title: 'Appearance', icon: 'lucide:palette', description: 'Colors, window style, and the look of your desktop.' },
   { id: 'wallpaper', title: 'Wallpaper', icon: 'lucide:mountain', description: 'Make this machine’s workspace your own.' },
   { id: 'keyboard', title: 'Keyboard', icon: 'lucide:keyboard', description: 'Keyboard shortcuts, window snapping, and switching between apps.' },
-  { id: 'apps', title: 'Apps & Extensions', icon: 'desk:app', description: 'Your desktop apps, including JavaScript extensions.' },
+  { id: 'apps', title: 'Apps & Extensions', icon: 'desk:app', description: 'Desktop apps, JavaScript extensions, and your web and TUI shortcuts.' },
   { id: 'tools', title: 'Remote Tools', icon: 'lucide:hard-drive', description: 'Supporting software installed by plydesk on this machine.' },
   { id: 'developer', title: 'Developer', icon: 'lucide:code-xml', description: 'Build, load, and reload local apps without rebuilding plydesk.' },
   { id: 'advanced', title: 'Advanced', icon: 'lucide:sliders-horizontal', description: 'Configuration and customization for this workspace.' },
@@ -48,7 +50,7 @@ export function Settings({ setTitle }: { setTitle?: (title: string) => void }) {
   const dialog = useDialog()
   const [section, setSection] = useState<Section>('appearance')
   const [query, setQuery] = useState('')
-  const [filter, setFilter] = useState<'all' | 'builtin' | 'extensions'>('all')
+  const [filter, setFilter] = useState<'all' | 'builtin' | 'extensions' | 'shortcuts'>('all')
   const [customizing, setCustomizing] = useState(false)
   const [installHelp, setInstallHelp] = useState(false)
   const [pending, setPending] = useState(0)
@@ -76,6 +78,7 @@ export function Settings({ setTitle }: { setTitle?: (title: string) => void }) {
   useEffect(() => { setTitle?.('Settings') }, [setTitle])
   useEffect(() => onTokensChanged(() => render(n => n + 1)), [])
   useEffect(() => onPluginsChanged(() => render(n => n + 1)), [])
+  useEffect(() => onShortcutsChanged(() => render(n => n + 1)), [])
   useEffect(() => {
     const search = (event: KeyboardEvent) => {
       const field = searchInput.current
@@ -169,7 +172,7 @@ export function Settings({ setTitle }: { setTitle?: (title: string) => void }) {
       .map(page => ({ title: page.title, detail: 'Settings', section: page.id, icon: page.icon, token: '' }))
     for (const app of APPS) {
       if (`${app.title} ${app.id} ${app.description ?? ''}`.toLocaleLowerCase().includes(q))
-        results.push({ title: app.title, detail: app.plugin ? 'Extension' : 'Built-in app', section: `app:${app.id}`, icon: app.icon, token: '' })
+        results.push({ title: app.title, detail: app.shortcut ? shortcutKind(app.shortcut) : app.plugin ? 'Extension' : 'Built-in app', section: `app:${app.id}`, icon: app.icon, token: '' })
     }
     for (const [appId, tokens] of declarations()) {
       if (appId !== 'desk' && !APPS.some(app => app.id === appId)) continue
@@ -210,7 +213,7 @@ export function Settings({ setTitle }: { setTitle?: (title: string) => void }) {
       <header className="settings-page-header">
         {activeApp && !q && <button className="settings-back" onClick={() => navigate('apps')} aria-label="Back to Apps & Extensions"><Icon id="lucide:chevron-left" size={18} /></button>}
         <div><h1>{q ? 'Search results' : activeApp?.title || page.title}</h1>
-          <p>{q ? `Settings matching “${query.trim()}”` : activeApp ? 'Preferences for this app on ' + machineName + '.' : page.description}</p></div>
+          <p>{q ? `Settings matching “${query.trim()}”` : activeApp?.shortcut ? 'A shortcut saved on this Mac.' : activeApp ? 'Preferences for this app on ' + machineName + '.' : page.description}</p></div>
       </header>
       <div ref={content} className="settings-content">
         {q ? <div className="settings-group-body settings-search-results">
@@ -253,36 +256,57 @@ export function Settings({ setTitle }: { setTitle?: (title: string) => void }) {
           {picture && !pictureUrl && <p className="settings-footnote">The preview is loading, or the picture is no longer available on this Mac.</p>}
         </> : section === 'developer' ? <DeveloperSettings /> : section === 'keyboard' ? <KeyboardSettings /> : section === 'apps' ? <>
           <div className="settings-app-toolbar"><div className="settings-segmented" aria-label="App type">
-            {(['all', 'builtin', 'extensions'] as const).map(value => <button key={value} aria-pressed={filter === value}
-              onClick={() => setFilter(value)}>{value === 'all' ? 'All apps' : value === 'builtin' ? 'Built-in' : 'Extensions'}</button>)}
-          </div><button className="settings-button" disabled={busy} onClick={() => void reload()}><Icon id="lucide:rotate-cw" size={13} />Reload extensions</button></div>
-          {(['builtin', 'extensions'] as const).filter(kind => filter === 'all' || filter === kind).map(kind => {
-            const list = apps.filter(app => kind === 'extensions' ? !!app.plugin : !app.plugin)
-            return <SettingsGroup key={kind} title={kind === 'extensions' ? `Extensions · ${list.length}` : `Built-in apps · ${list.length}`}>
+            {(['all', 'builtin', 'extensions', 'shortcuts'] as const).map(value => <button key={value} aria-pressed={filter === value}
+              onClick={() => setFilter(value)}>{value === 'all' ? 'All apps' : value === 'builtin' ? 'Built-in' : value === 'extensions' ? 'Extensions' : 'Shortcuts'}</button>)}
+          </div><button className="settings-button is-primary" onClick={() => editShortcut()}><Icon id="lucide:plus" size={13} />Create app</button></div>
+          {shortcutsError() && <div className="settings-inline-error" role="alert">Couldn’t load shortcuts: {shortcutsError()} <button className="settings-button" onClick={() => void reloadShortcuts()}>Retry</button></div>}
+          {(['shortcuts', 'builtin', 'extensions'] as const).filter(kind => filter === 'all' || filter === kind).map(kind => {
+            const list = apps.filter(app => kind === 'shortcuts' ? !!app.shortcut : kind === 'extensions' ? !!app.plugin : !app.plugin && !app.shortcut)
+            return <SettingsGroup key={kind} title={`${kind === 'extensions' ? 'JavaScript extensions' : kind === 'shortcuts' ? 'Your shortcuts' : 'Built-in apps'} · ${list.length}`}>
               {list.map(app => <button key={app.id} className="settings-app-row" onClick={() => navigate(`app:${app.id}`)}>
                 <AppIcon app={app} host={host} /><span><strong>{app.title}</strong><small>{app.description || BUILTIN_DESCRIPTIONS[app.id] || 'JavaScript extension'}</small></span>
                 <Icon id="lucide:chevron-right" size={14} /></button>)}
-              {!list.length && <p className="settings-empty">No extensions are registered.</p>}
+              {!list.length && <p className="settings-empty">{kind === 'shortcuts' ? 'Add a website or terminal command using Create app.' : 'No extensions are registered.'}</p>}
             </SettingsGroup>
           })}
+          <button className="settings-button" disabled={busy} onClick={() => void reload()}><Icon id="lucide:rotate-cw" size={13} />Reload extensions</button>
           {pluginFailures().length > 0 && <SettingsGroup title="Couldn’t load">
             {pluginFailures().map(failure => <div className="settings-extension-error" key={failure.directory}>
               <strong>{failure.name}</strong><p>{failure.message}</p><code>{failure.directory}</code>
             </div>)}
           </SettingsGroup>}
           <button className="settings-link-row" onClick={() => navigate('developer')}><Icon id="lucide:puzzle" size={17} /><span>Develop a local app</span><Icon id="lucide:chevron-right" size={14} /></button>
-          <p className="settings-footnote">Installed apps start only when opened. Each app window has its own runtime and saved access approvals.</p>
+          <p className="settings-footnote">Shortcuts run only while open. Web shortcuts are available on every machine’s desktop; TUI shortcuts belong to their chosen machine. JavaScript extensions keep their own access approvals.</p>
         </> : activeApp ? <>
           <div className="settings-app-heading"><AppIcon app={activeApp} host={host} large /><div><h2>{activeApp.title}</h2>
-            <span className="settings-app-kind">{activeApp.plugin ? 'JavaScript extension' : 'Built-in app'}</span>
+            <span className="settings-app-kind">{activeApp.shortcut ? shortcutKind(activeApp.shortcut) : activeApp.plugin ? 'JavaScript extension' : 'Built-in app'}</span>
             <p>{activeApp.description || BUILTIN_DESCRIPTIONS[activeApp.id] || 'An app for your plydesk workspace.'}</p></div>
             {!activeApp.hidden && <button className="settings-button" onClick={() => fw.ui.open(activeApp.id, { host })}>Open app<Icon id="lucide:arrow-up-right" size={13} /></button>}</div>
           {activeApp.plugin && <AppAccess app={activeApp} />}
-          <SettingsGroup title="Appearance">
+          {activeApp.shortcut && <SettingsGroup title="Shortcut">
+            {activeApp.shortcut.kind === 'web' ? <>
+              <SettingsRow label="Website" description={activeApp.shortcut.url} />
+              <SettingsRow label="Available on" description="Every machine’s desktop" />
+              <SettingsRow label="Plydesk access" description="Websites have no access to the Plydesk SDK or your SSH connection." />
+            </> : <>
+              <SettingsRow label="Machine" description={activeApp.shortcut.machine} />
+              <SettingsRow label="Command" description={activeApp.shortcut.command} />
+              <SettingsRow label="Working directory" description={activeApp.shortcut.cwd || 'Home directory'} />
+              <SettingsRow label="Ctrl-C" description={activeApp.shortcut.closeOnCtrlC ? 'Closes the window' : 'Handled by the terminal app'} />
+            </>}
+            <SettingsRow label="Edit shortcut" description="Change its name, icon, or launch settings."><button className="settings-button" onClick={() => editShortcut(activeApp.id)}>Edit…</button></SettingsRow>
+            <SettingsRow label="Remove shortcut" description="Closes its open windows. Website data and remote files are kept."><button className="settings-button" disabled={busy} onClick={async () => {
+              if (!await dialog.confirm({ title: `Remove ${activeApp.title}?`, message: 'This removes the shortcut from your dock and launcher and closes its open windows.', okLabel: 'Remove', danger: true })) return
+              setPending(n => n + 1); setError('')
+              try { await removeShortcut(activeApp.id); navigate('apps'); setNote('Shortcut removed') }
+              catch (e) { setError(String(e)) } finally { setPending(n => n - 1) }
+            }}>Remove…</button></SettingsRow>
+          </SettingsGroup>}
+          {!activeApp.shortcut && <SettingsGroup title="Appearance">
             {Object.entries(appTokens).map(([name, decl]) => tokenRow(`${activeApp.id}.${name}`, decl))}
             {!Object.keys(appTokens).length && <p className="settings-empty">This app has no appearance settings.</p>}
-          </SettingsGroup>
-          {Object.keys(appTokens).length <= 1 && <p className="settings-footnote">Additional preferences, when available, are managed inside the app.</p>}
+          </SettingsGroup>}
+          {!activeApp.shortcut && Object.keys(appTokens).length <= 1 && <p className="settings-footnote">Additional preferences, when available, are managed inside the app.</p>}
           {!!activeApp.requires?.length && <SettingsGroup title="Required on this machine">
             {activeApp.requires.map(requirement => <SettingsRow key={requirement.command} label={requirement.command}
               description={requirement.kind === 'archive' ? 'Supporting tool' : requirement.kind === 'package' ? 'System package' : 'Command-line tool'}>

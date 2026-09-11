@@ -9,6 +9,13 @@ fn main() {
     }
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
         tauri_build::AppManifest::new().commands(&[
+            "shortcuts_list",
+            "shortcuts_save",
+            "shortcuts_remove",
+            "shortcut_web_open",
+            "shortcut_web_close",
+            "shortcut_web_snapshot",
+            "shortcut_web_browser",
             "index_build",
             "index_search",
             "index_status",

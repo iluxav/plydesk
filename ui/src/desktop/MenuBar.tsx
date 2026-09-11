@@ -7,6 +7,8 @@ import { Icon } from '../wm/Icon'
 import { workArea } from '../wm/workArea'
 import { useKeyboardPreferences } from '../keyboard/preferences'
 import { formatShortcut, type ActionId } from '../keyboard/shortcuts'
+import { availableOn } from '../shortcuts/model'
+import { editShortcut } from '../shortcuts/store'
 
 export function MenuBar({ hosts, active, onSwitch, onAdd, onDisconnect, onReloadPlugins, onSearch }: {
   hosts: string[]
@@ -99,7 +101,9 @@ export function MenuBar({ hosts, active, onSwitch, onAdd, onDisconnect, onReload
       <button className="menubar-item" aria-haspopup="menu"
         onClick={ev => menu.open(ev, [
           ...(onSearch ? [{ label: 'Search apps and files…', shortcut: bindings.launcher ? formatShortcut(bindings.launcher) : undefined, onSelect: onSearch }, { type: 'separator' as const }] : []),
-          ...APPS.filter(app => !app.hidden).map(app => ({ label: app.title, onSelect: () => fw.ui.open(app.id, { host: active }) })),
+          { label: 'Create app shortcut…', icon: '+', onSelect: () => editShortcut() },
+          { type: 'separator' },
+          ...APPS.filter(app => !app.hidden && availableOn(app.shortcut, active)).map(app => ({ label: app.title, onSelect: () => fw.ui.open(app.id, { host: active }) })),
         ])}>Applications</button>
       <button className="menubar-item" aria-haspopup="menu" onClick={ev => menu.open(ev, windowMenu)}>Window</button>
       <span className="menubar-divider" />

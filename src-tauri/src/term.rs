@@ -10,17 +10,17 @@
 //! request. It also costs no extra authentication, because the connection is
 //! already open.
 
-use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
+use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize, ChildKiller};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 pub struct Session {
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
-    child: Box<dyn portable_pty::Child + Send + Sync>,
+    killer: Box<dyn ChildKiller + Send + Sync>,
 }
 
 #[derive(Default)]
@@ -47,7 +47,10 @@ pub fn open(
     control_path: &str,
     cols: u16,
     rows: u16,
+    command: Option<&str>,
 ) -> Result<(), String> {
+    let mut sessions = terms.0.lock().map_err(|e| e.to_string())?;
+    if sessions.contains_key(&id) { return Err("Terminal session already exists".into()); }
     let pty = native_pty_system();
     let pair = pty
         .openpty(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 })
@@ -57,14 +60,18 @@ pub fn open(
     // -tt forces a remote PTY even though our stdin is a pty we made, not a
     // terminal the user typed into.
     cmd.args(["-tt", "-S", control_path, "-o", "BatchMode=yes", target]);
+    if let Some(command) = command { cmd.arg(command); }
     cmd.env("TERM", "xterm-256color");
 
-    let child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
+    let mut child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
     drop(pair.slave);
 
     let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
     let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
 
+    let killer = child.clone_killer();
+    sessions.insert(id.clone(), Session { master: pair.master, writer, killer });
+    drop(sessions);
     let app2 = app.clone();
     let id2 = id.clone();
     std::thread::spawn(move || {
@@ -73,21 +80,18 @@ pub fn open(
             match reader.read(&mut buf) {
                 Ok(0) | Err(_) => break,
                 Ok(n) => {
-                    let _ = app2.emit(
-                        "term:data",
+                    let _ = app2.emit_to(
+                        "main", "term:data",
                         Chunk { id: id2.clone(), b64: plydesk_core::b64encode(&buf[..n]) },
                     );
                 }
             }
         }
-        let _ = app2.emit("term:exit", Exit { id: id2, code: None });
+        let code = child.wait().ok().map(|status| status.exit_code() as i32);
+        if let Ok(mut sessions) = app2.state::<Terminals>().0.lock() { sessions.remove(&id2); }
+        let _ = app2.emit_to("main", "term:exit", Exit { id: id2, code });
     });
 
-    terms
-        .0
-        .lock()
-        .map_err(|e| e.to_string())?
-        .insert(id, Session { master: pair.master, writer, child });
     Ok(())
 }
 
@@ -109,8 +113,7 @@ pub fn resize(terms: &Terminals, id: &str, cols: u16, rows: u16) -> Result<(), S
 pub fn close(terms: &Terminals, id: &str) -> Result<(), String> {
     let mut map = terms.0.lock().map_err(|e| e.to_string())?;
     if let Some(mut s) = map.remove(id) {
-        let _ = s.child.kill();
-        let _ = s.child.wait();
+        let _ = s.killer.kill();
     }
     Ok(())
 }

@@ -212,8 +212,8 @@ function makeApi(getHost: () => string) {
 
   /** Interactive PTY sessions. Streaming, unlike everything else here. */
   term: {
-    open:   (id: string, target: string, cols: number, rows: number) =>
-      invoke<void>('term_open', { id, target, cols, rows }),
+    open:   (id: string, target: string, cols: number, rows: number, shortcutId?: string) =>
+      invoke<{ name: string; command: string; closeOnCtrlC: boolean } | null>('term_open', { id, target, cols, rows, shortcutId }),
     write:  (id: string, data: string) => invoke<void>('term_write', { id, data }),
     resize: (id: string, cols: number, rows: number) =>
       invoke<void>('term_resize', { id, cols, rows }),

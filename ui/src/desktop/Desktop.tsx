@@ -20,6 +20,8 @@ import { reloadPlugins, onPluginsChanged, reportPluginError } from '../ext/loade
 import { RuntimeBridge } from '../ext/RuntimeBridge'
 import { KeyboardProvider } from '../keyboard/KeyboardProvider'
 import { Launcher } from './Launcher'
+import { initializeShortcuts, onShortcutsChanged } from '../shortcuts/store'
+import { ShortcutManager } from '../shortcuts/ShortcutManager'
 
 export function Desktop() {
   const { state, dispatch } = useWM()
@@ -107,6 +109,14 @@ export function Desktop() {
     winsRef.current.filter(w => removed.includes(w.appId)).forEach(w => dispatch({ t: 'close', id: w.id }))
     bumpPlugins(n => n + 1)
   }), [dispatch])
+  useEffect(() => {
+    const off = onShortcutsChanged(removed => {
+      winsRef.current.filter(w => removed.includes(w.appId)).forEach(w => dispatch({ t: 'close', id: w.id }))
+      bumpPlugins(n => n + 1)
+    })
+    void initializeShortcuts()
+    return off
+  }, [dispatch])
 
   useEffect(() => {
     setPasswordPrompt(async host =>
@@ -124,8 +134,13 @@ export function Desktop() {
     fw.ui._install((appId, props) => {
       const app = APPS.find(a => a.id === appId)
       if (!app) return
-      const host = (props?.host as string) ?? activeRef.current
+      const host = app.shortcut?.kind === 'tui' ? app.shortcut.machine : (props?.host as string) ?? activeRef.current
       if (!host) return
+      if (!hostsRef.current.includes(host)) {
+        void dlg.alert({ title: 'Connect to this machine', message: `Connect to ${host} before opening ${app.title}.` })
+        return
+      }
+      setActive(host)
       const existing = winsRef.current.find(w =>
         w.appId === appId && w.host === host && props?.path && (w.props as any)?.path === props.path)
       if (existing) { dispatch({ t: 'focus', id: existing.id }); return }
@@ -137,10 +152,11 @@ export function Desktop() {
       dispatch({ t: 'open', win: {
         id: nextId(appId), appId, host, title: app.title, icon: app.icon,
         x: Math.max(0, Math.min(40 + (n % 6) * 28, paneW - w)),
-        y: Math.max(0, Math.min(32 + (n % 6) * 26, paneH - h)), w, h, props,
+        y: Math.max(0, Math.min(32 + (n % 6) * 26, paneH - h)), w, h,
+        props: app.shortcut ? { ...props, shortcut: structuredClone(app.shortcut) } : props,
       }})
     })
-  }, [dispatch])
+  }, [dispatch, dlg])
 
   const reload = useCallback(async () =>
     reloadPlugins(appIds => {
@@ -263,6 +279,7 @@ export function Desktop() {
       <Dock host={active} />
       </div>
       <Launcher host={active} open={launcher && !adding} onClose={closeLauncher} />
+      <ShortcutManager host={active} />
       {adding && <div className="connection-overlay">
         <Connections connected={hosts} onConnected={connected} onCancel={() => setAdding(false)} />
       </div>}
