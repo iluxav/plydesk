@@ -149,13 +149,15 @@ input, textarea { user-select: text; }
 .menubar-clock { display: flex; align-items: center; gap: 9px; white-space: nowrap; }
 .menubar-clock small { opacity: .6; font-size: 9px; }
 .menubar-connected { display: flex; align-items: center; gap: 5px; color: var(--color-desk-dim); font-size: 10px; }
-.desktop-window { position: absolute; display: flex; flex-direction: column; overflow: hidden; min-width: 0;
+.desktop-window { --window-frame: 6px; position: absolute; display: flex; flex-direction: column; overflow: visible; min-width: 0;
+  padding: 0 var(--window-frame) var(--window-frame);
   border: 1px solid var(--color-desk-border); border-radius: var(--color-desk-radius, 12px); background: var(--color-desk-panel);
   box-shadow: 0 10px 35px #050a1440, 0 2px 8px #0003; isolation: isolate; }
 .desktop-window[data-focused="true"] { border-color: color-mix(in srgb, var(--color-desk-border) 65%, #c8d8ed 35%);
   box-shadow: 0 24px 65px #050a1480, 0 8px 24px #0005, 0 0 0 1px #0002; }
-.desktop-window.is-maximized { border-radius: 0; border-width: 0; }
+.desktop-window.is-maximized { --window-frame: 0px; border-radius: 0; border-width: 0; }
 .window-titlebar { height: 43px; flex-shrink: 0; display: flex; align-items: center; gap: 15px; padding: 0 14px;
+  margin: 0 calc(-1 * var(--window-frame)); border-radius: max(0px, calc(var(--color-desk-radius, 12px) - 1px)) max(0px, calc(var(--color-desk-radius, 12px) - 1px)) 0 0;
   background: var(--color-desk-titlebar); border-bottom: 1px solid var(--color-desk-line); box-shadow: inset 0 1px #ffffff07; cursor: grab; touch-action: none; }
 .window-titlebar:active { cursor: grabbing; }
 .window-controls { display: flex; align-items: center; gap: 8px; padding: 5px 0; flex-shrink: 0; }
@@ -177,6 +179,22 @@ input, textarea { user-select: text; }
 .window-host { display: flex; align-items: center; gap: 5px; margin-left: auto; color: var(--color-desk-dim); font-size: 10px; white-space: nowrap; }
 .window-host .status-dot { width: 4px; height: 4px; opacity: .6; }
 .window-content { flex: 1; min-height: 0; overflow: hidden; }
+.desktop-window.is-maximized .window-titlebar { border-radius: 0; }
+/* Native webviews sit above every HTML z-index. Keep a real desktop-owned
+   rim outside their content, with generous hit areas on both sides of it. */
+.window-resize-handle { position: absolute; z-index: 5; touch-action: none; }
+.window-resize-handle[data-resize="n"], .window-resize-handle[data-resize="s"] { left: 13px; right: 13px; height: 12px; cursor: ns-resize; }
+.window-resize-handle[data-resize="n"] { top: -5px; }
+.window-resize-handle[data-resize="s"] { bottom: -5px; }
+.window-resize-handle[data-resize="e"], .window-resize-handle[data-resize="w"] { top: 13px; bottom: 13px; width: 12px; cursor: ew-resize; }
+.window-resize-handle[data-resize="e"] { right: -5px; }
+.window-resize-handle[data-resize="w"] { left: -5px; }
+.window-resize-handle[data-resize="ne"], .window-resize-handle[data-resize="nw"],
+.window-resize-handle[data-resize="se"], .window-resize-handle[data-resize="sw"] { width: 20px; height: 20px; }
+.window-resize-handle[data-resize="ne"] { top: -5px; right: -5px; cursor: nesw-resize; }
+.window-resize-handle[data-resize="nw"] { top: -5px; left: -5px; cursor: nwse-resize; }
+.window-resize-handle[data-resize="se"] { bottom: -5px; right: -5px; cursor: nwse-resize; }
+.window-resize-handle[data-resize="sw"] { bottom: -5px; left: -5px; cursor: nesw-resize; }
 .desk-dragging iframe, .desk-resizing iframe { pointer-events: none; }
 
 .desktop-dock { position: absolute; bottom: 10px; left: 50%; z-index: 9999; max-width: calc(100% - 24px);

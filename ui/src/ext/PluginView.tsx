@@ -45,6 +45,7 @@ export function PluginView({ app, appProps, host, winId }: { app: AppDef; appPro
   const [retry, setRetry] = useState(0)
   const [snapshot, setSnapshot] = useState('')
   const [lastSnapshot, setLastSnapshot] = useState('')
+  const [childSnapshot, setChildSnapshot] = useState<{ image: string; bounds: number[] } | null>(null)
   const loadingRef = useRef(loading)
   useLayoutEffect(() => { current.current = { app, host, winId }; loadingRef.current = loading; requestSync.current() })
   const close = useCallback((label: string) => { forgetRuntime(label); return invoke('runtime_close', { label }).catch(() => {}) }, [])
@@ -111,7 +112,7 @@ export function PluginView({ app, appProps, host, winId }: { app: AppDef; appPro
           active.current = { label, native: view, shown: false, bounds: [] }
           candidate.current = null
           if (previous) await close(previous.label)
-          setActiveLabel(label); setLoading(false); setError(''); setPreview(null); setSnapshot(''); setLastSnapshot('')
+          setActiveLabel(label); setLoading(false); setError(''); setPreview(null); setSnapshot(''); setLastSnapshot(''); setChildSnapshot(null)
           requestSync.current()
           replayRuntime(label, e => { if (e.kind === 'embedded') attachChild(e) })
         }).catch(fail)
@@ -153,15 +154,23 @@ export function PluginView({ app, appProps, host, winId }: { app: AppDef; appPro
           const visible = !loadingRef.current && r.width > 1 && height > 1 && windowElement.dataset.focused === 'true'
             && !element.closest('[inert]') && !document.querySelector('[role="menu"], [aria-modal="true"], [data-window-switcher]')
           if (!visible) {
-            if (view.child?.shown) { await view.child.native.hide(); view.child.shown = false }
             if (view.shown) {
-              // A cached native snapshot keeps covered apps recognizable while
-              // their webviews are hidden behind HTML chrome and dialogs.
-              void invoke<string>('runtime_snapshot', { label: view.label }).then(data => {
-                if (alive.current && active.current === view && data) { setSnapshot(data); setLastSnapshot(view.label) }
-              }).catch(() => {})
-              await view.native.hide(); view.shown = false
+              // Capture both surfaces before hiding them: the runtime's own
+              // snapshot excludes its separate editor/content webview.
+              const child = view.child?.shown ? view.child : undefined
+              const bounds = child?.bounds.map((n, i) => n / view.bounds[i % 2 + 2] * 100)
+              void Promise.all([
+                invoke<string>('runtime_snapshot', { label: view.label }).catch(() => ''),
+                child ? invoke<string>('runtime_snapshot', { label: view.label, embedded: true }).catch(() => '') : Promise.resolve(''),
+              ]).then(([data, image]) => {
+                if (alive.current && active.current === view) {
+                  setSnapshot(data); setLastSnapshot(view.label)
+                  setChildSnapshot(image && bounds ? { image, bounds } : null)
+                }
+              })
             }
+            if (view.child?.shown) { await view.child.native.hide(); view.child.shown = false }
+            if (view.shown) { await view.native.hide(); view.shown = false }
             continue
           }
           const b = [r.x,r.y,r.width,height].map(Math.round)
@@ -210,7 +219,11 @@ export function PluginView({ app, appProps, host, winId }: { app: AppDef; appPro
         {preview.developer && <p>Developer app: approval also covers code edits in this folder. Changing manifest.json asks again.</p>}
         <div className="app-access-actions"><button className="app-button" onClick={deny}>Deny</button><button className="app-button is-primary" onClick={() => setAccepted(true)}>Allow and open</button></div>
       </div> : loading && preview && accepted ? <Requires key={preview.ticket} requires={preview.manifest.requires} name={app.title}><Launch start={start} /><div className="app-runtime-placeholder"><span className="ui-spinner" /><strong>Opening {app.title}…</strong></div></Requires>
-        : snapshot && lastSnapshot === activeLabel ? <img className="app-runtime-preview" src={snapshot} alt={`${app.title} preview`} />
+        : (snapshot || childSnapshot) && lastSnapshot === activeLabel ? <>
+          {snapshot && <img className="app-runtime-preview" src={snapshot} alt={`${app.title} preview`} />}
+          {childSnapshot && <img className="app-runtime-preview app-runtime-child-preview" src={childSnapshot.image} alt={`${app.title} content preview`}
+            style={{ left: `${childSnapshot.bounds[0]}%`, top: `${childSnapshot.bounds[1]}%`, width: `${childSnapshot.bounds[2]}%`, height: `${childSnapshot.bounds[3]}%` }} />}
+        </>
         : <div className="app-runtime-placeholder"><Icon id={app.icon} size={32} /><strong>{loading ? `Opening ${app.title}…` : app.title}</strong><span>{loading ? 'Preparing app runtime' : hasView ? 'Select this window to continue' : 'This app could not start'}</span></div>}
     </div>
     {error && <div className="app-runtime-notice" role="alert"><span>{error}{hasView ? ' The existing view remains available.' : ''}</span><button className="app-button" onClick={() => setRetry(n => n+1)}>Reload</button></div>}

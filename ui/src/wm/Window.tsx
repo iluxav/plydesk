@@ -4,16 +4,7 @@ import { useWM, type Win } from './store'
 import { layoutRect } from './windowState'
 import { workArea } from './workArea'
 
-const HANDLES: [string, string][] = [
-  ['top-0 left-2 right-2 h-1 cursor-ns-resize', 'n'],
-  ['bottom-0 left-2 right-2 h-1 cursor-ns-resize', 's'],
-  ['right-0 top-2 bottom-2 w-1 cursor-ew-resize', 'e'],
-  ['left-0 top-2 bottom-2 w-1 cursor-ew-resize', 'w'],
-  ['top-0 right-0 w-3 h-3 cursor-nesw-resize', 'ne'],
-  ['top-0 left-0 w-3 h-3 cursor-nwse-resize', 'nw'],
-  ['bottom-0 right-0 w-3 h-3 cursor-nwse-resize', 'se'],
-  ['bottom-0 left-0 w-3 h-3 cursor-nesw-resize', 'sw'],
-]
+const HANDLES = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']
 const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(n, max))
 
 export function Window({ win, children }: { win: Win; children: ReactNode }) {
@@ -40,12 +31,12 @@ export function Window({ win, children }: { win: Win; children: ReactNode }) {
     const fit = () => {
       if (cleanup.current) return
       const w = current.current
-      const width = Math.min(w.w, pane.clientWidth)
-      const height = Math.min(w.h, pane.clientHeight)
       const area = workArea(pane)
+      const width = Math.min(w.w, area.deskW)
+      const height = Math.min(w.h, area.deskH)
       const next = w.layout
         ? layoutRect(w.layout, area.deskW, area.deskH)
-        : { x: clamp(w.x, 0, pane.clientWidth - width), y: clamp(w.y, 0, pane.clientHeight - height), w: width, h: height }
+        : { x: clamp(w.x, 0, area.deskW - width), y: clamp(w.y, 0, area.deskH - height), w: width, h: height }
       if (Object.entries(next).some(([key, value]) => w[key as 'x' | 'y' | 'w' | 'h'] !== value))
         dispatch({ t: 'geom', id: w.id, ...next })
     }
@@ -59,6 +50,7 @@ export function Window({ win, children }: { win: Win; children: ReactNode }) {
     if (e.button !== 0 || win.maximized || cleanup.current) return
     e.preventDefault(); e.stopPropagation(); focus()
     const node = el.current!, pane = node.parentElement!
+    const { deskW, deskH } = workArea(pane)
     const start = { mx: e.clientX, my: e.clientY, x: win.x, y: win.y, w: win.w, h: win.h }
     let geometry = { x: win.x, y: win.y, w: win.w, h: win.h }
     node.setPointerCapture(e.pointerId)
@@ -66,13 +58,13 @@ export function Window({ win, children }: { win: Win; children: ReactNode }) {
     const move = (event: PointerEvent) => {
       const dx = event.clientX - start.mx, dy = event.clientY - start.my
       let { x, y, w, h } = start
-      const minW = Math.min(360, pane.clientWidth), minH = Math.min(220, pane.clientHeight)
+      const minW = Math.min(360, deskW), minH = Math.min(220, deskH)
       if (!dir) {
-        x = clamp(start.x + dx, 0, pane.clientWidth - w)
-        y = clamp(start.y + dy, 0, pane.clientHeight - h)
+        x = clamp(start.x + dx, 0, deskW - w)
+        y = clamp(start.y + dy, 0, deskH - h)
       } else {
-        if (dir.includes('e')) w = clamp(start.w + dx, minW, pane.clientWidth - x)
-        if (dir.includes('s')) h = clamp(start.h + dy, minH, pane.clientHeight - y)
+        if (dir.includes('e')) w = clamp(start.w + dx, minW, deskW - x)
+        if (dir.includes('s')) h = clamp(start.h + dy, minH, deskH - y)
         if (dir.includes('w')) { x = clamp(start.x + dx, 0, start.x + start.w - minW); w = start.x + start.w - x }
         if (dir.includes('n')) { y = clamp(start.y + dy, 0, start.y + start.h - minH); h = start.y + start.h - y }
       }
@@ -118,8 +110,8 @@ export function Window({ win, children }: { win: Win; children: ReactNode }) {
         <span className="window-host" title={win.host}><span className="status-dot" />{win.host.replace(/^.*@/, '')}</span>
       </header>
       <div className="window-content">{children}</div>
-      {!win.maximized && HANDLES.map(([cls, dir]) => <div key={dir} aria-hidden
-        onPointerDown={e => gesture(e, dir)} className={`absolute ${cls}`} />)}
+      {!win.maximized && HANDLES.map(dir => <div key={dir} aria-hidden data-resize={dir}
+        onPointerDown={e => gesture(e, dir)} className="window-resize-handle" />)}
     </section>
   )
 }

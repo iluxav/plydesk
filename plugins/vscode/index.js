@@ -57,56 +57,91 @@ const TOKF = `${OPT}/openvscode.token`
 const SOCK_MARK = 'SOCKET='
 
 export function createAdapter(sdk) {
-  // A unix socket rather than a TCP port, and no connection token.
-  //
-  // That combination sounds worse and is better. The token is delivered as a
-  // SameSite=Lax cookie via a redirect, which a cross-origin iframe never gets
-  // to keep — the app is tauri://localhost and the server is 127.0.0.1, so the
-  // cookie is third-party and WKWebView drops it. The frame just 403s.
-  //
-  // Binding a socket removes the reason the token existed. There is no TCP
-  // port on the remote for anyone to reach, and umask 077 means no other user
-  // can open the socket either. What reaches the Mac is one loopback port,
-  // which is exactly what every other forward here already is.
+  // A saved PID/socket can outlive a renamed install. Verify the executable
+  // path before adoption, and only stop processes belonging to this app.
+  const CONTROL = `
+    D="${OPT}/openvscode-server"
+    OLD="$HOME/.sshdesk/opt/openvscode-server"
+    owned_server() {
+      case "$1" in ''|*[!0-9]*) return 1 ;; esac
+      [ -r "/proc/$1/cmdline" ] || return 1
+      tr '\\000' '\\n' < "/proc/$1/cmdline" | grep -Fqx \\
+        -e "$D/bin/openvscode-server" -e "$D/out/server-main.js" \\
+        -e "$OLD/bin/openvscode-server" -e "$OLD/out/server-main.js"
+    }
+    current_server() {
+      owned_server "$1" || return 1
+      tr '\\000' '\\n' < "/proc/$1/cmdline" | grep -Fqx \\
+        -e "$D/bin/openvscode-server" -e "$D/out/server-main.js"
+    }
+    stop_server() {
+      P=$(cat "${PID}" 2>/dev/null || true)
+      owned_server "$P" || return 0
+      CHILDREN=$(cat "/proc/$P/task/$P/children" 2>/dev/null || true)
+      # The vendor launcher is a shell wrapper, so stopping only its PID
+      # leaves Node serving the old paths. Stop its verified server child too.
+      for C in $CHILDREN; do
+        if owned_server "$C"; then kill "$C" 2>/dev/null || true; fi
+      done
+      kill "$P" 2>/dev/null || true
+      for _ in $(seq 1 40); do
+        LIVE=''
+        for C in $P $CHILDREN; do
+          if owned_server "$C"; then LIVE=1; fi
+        done
+        [ -n "$LIVE" ] || return 0
+        sleep 0.1
+      done
+      echo 'The previous VS Code server did not stop. Try again shortly.' >&2
+      return 1
+    }
+  `
   const START = `
     set -e
     umask 077
-    D="${OPT}/openvscode-server"
-    if [ -f "${PID}" ] && kill -0 "$(cat "${PID}" 2>/dev/null)" 2>/dev/null && [ -S "${SOCK}" ]; then
-      # Adopting an existing server inherits whatever permissions it was
-      # started with, which may predate this. Re-assert them.
+    ${CONTROL}
+    P=$(cat "${PID}" 2>/dev/null || true)
+    if current_server "$P" && [ -S "${SOCK}" ] && [ -s "${TOKF}" ]; then
       chmod 700 "${SOCK}" 2>/dev/null || true
       echo "${SOCK_MARK}${SOCK}"
-      echo "TOKEN=$(cat "${TOKF}" 2>/dev/null)"
+      echo "TOKEN=$(cat "${TOKF}")"
       exit 0
     fi
+    stop_server
+    mkdir -p "${OPT}"
     rm -f "${LOG}" "${SOCK}"
-    TOK=$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')
+    TOK=$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \\n')
     printf '%s' "$TOK" > "${TOKF}"
     chmod 600 "${TOKF}"
-    nohup "$D/bin/openvscode-server" \
-      --socket-path "${SOCK}" --connection-token "$TOK" \
-      --server-data-dir "${OPT}/openvscode-data" \
-      --user-data-dir "${OPT}/openvscode-user" \
-      --extensions-dir "${OPT}/openvscode-extensions" \
-      --telemetry-level off --accept-server-license-terms \
+    # Older releases used the server's default subdirectories. Keep using
+    # existing user data and extensions instead of silently starting fresh.
+    USER_DIR="${OPT}/openvscode-user"
+    EXT_DIR="${OPT}/openvscode-extensions"
+    if [ ! -d "$USER_DIR" ] && [ -d "${OPT}/openvscode-data/data" ]; then USER_DIR="${OPT}/openvscode-data/data"; fi
+    if [ ! -d "$EXT_DIR" ] && [ -d "${OPT}/openvscode-data/extensions" ]; then EXT_DIR="${OPT}/openvscode-data/extensions"; fi
+    nohup "$D/bin/openvscode-server" \\
+      --socket-path "${SOCK}" --connection-token "$TOK" \\
+      --server-data-dir "${OPT}/openvscode-data" \\
+      --user-data-dir "$USER_DIR" \\
+      --extensions-dir "$EXT_DIR" \\
+      --telemetry-level off --accept-server-license-terms \\
       > "${LOG}" 2>&1 &
     echo $! > "${PID}"
     for _ in $(seq 1 80); do
       [ -S "${SOCK}" ] && break
+      kill -0 "$(cat "${PID}")" 2>/dev/null || break
       sleep 0.25
     done
     [ -S "${SOCK}" ] || { echo "the server did not create its socket" >&2; exit 1; }
-    # Explicit, not left to umask: this is what replaces the connection token,
-    # so it should not depend on how the process happened to be started.
     chmod 700 "${SOCK}"
     echo "${SOCK_MARK}${SOCK}"
     echo "TOKEN=$TOK"
   `
 
   const STOP = `
-    if [ -f "${PID}" ]; then kill "$(cat "${PID}")" 2>/dev/null || true; rm -f "${PID}"; fi
-    rm -f "${SOCK}" "${TOKF}"
+    ${CONTROL}
+    stop_server || exit 1
+    rm -f "${PID}" "${SOCK}" "${TOKF}"
   `
 
   return {
@@ -115,7 +150,7 @@ export function createAdapter(sdk) {
       const r = await sdk.exec(['sh', '-c', START])
       const line = (r.stdout || '').split('\n').map(s => s.trim())
         .find(s => s.startsWith(SOCK_MARK))
-      if (!line) {
+      if (r.code !== 0 || !line) {
         const why = (r.stderr || r.stdout || '').trim().split('\n').slice(-3).join('\n')
         throw new Error(why || 'the server did not report a socket')
       }
@@ -125,7 +160,8 @@ export function createAdapter(sdk) {
     },
 
     async stop() {
-      await sdk.exec(['sh', '-c', STOP])
+      const r = await sdk.exec(['sh', '-c', STOP])
+      if (r.code !== 0) throw new Error((r.stderr || r.stdout || 'Could not stop VS Code').trim())
     },
 
     /** Last few log lines, for when starting goes wrong. */
@@ -178,7 +214,7 @@ export function createApp({ React, html, useApi, useFw, EmbeddedWebview }) {
 
     const stop = async () => {
       if (!await fw.ui.confirm({ title: 'Stop VS Code?', message: `This ends the editor server on ${machine}. Save your work in VS Code first.`, okLabel: 'Stop server' })) return
-      try { await api.stop() } catch { /* may already be gone */ }
+      try { await api.stop() } catch (e) { setErr(String(e)); return }
       if (socket.current) {
         try { await fw.net.unforwardSocket(socket.current) } catch { /* ditto */ }
       }

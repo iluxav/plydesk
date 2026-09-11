@@ -664,8 +664,9 @@ fn watch_units(app: &tauri::AppHandle, label: &str, s: &Arc<Session>) -> Result<
 }
 
 #[tauri::command]
-pub async fn runtime_snapshot(app: tauri::AppHandle, webview: Webview, label: String) -> Result<String, String> {
-    desktop(&webview)?; session(&app,&label)?;
+pub async fn runtime_snapshot(app: tauri::AppHandle, webview: Webview, label: String, embedded: Option<bool>) -> Result<String, String> {
+    desktop(&webview)?; let s = session(&app,&label)?;
+    let label = if embedded == Some(true) { lock(&s.embedded)?.clone().ok_or("Embedded view is closed")? } else { label };
     #[cfg(target_os = "macos")]
     {
         use std::{ffi::{c_void, c_char, CStr}, sync::mpsc};
@@ -686,7 +687,7 @@ pub async fn runtime_snapshot(app: tauri::AppHandle, webview: Webview, label: St
             Ok(if value.is_empty() { value } else { format!("data:image/png;base64,{value}") })
         }).await.map_err(|e| e.to_string())?;
     }
-    #[cfg(not(target_os = "macos"))] { Ok(String::new()) }
+    #[cfg(not(target_os = "macos"))] { let _ = label; Ok(String::new()) }
 }
 
 #[cfg(test)]
