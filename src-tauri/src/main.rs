@@ -2,6 +2,7 @@
 
 mod term;
 mod shortcuts;
+mod ssh_keys;
 mod keyboard;
 mod developer;
 mod runtime;
@@ -85,12 +86,21 @@ fn with_host<T>(
 }
 
 #[tauri::command]
-fn connect(hosts: State<Hosts>, target: String, password: Option<String>) -> Result<String, String> {
+fn connect(app: tauri::AppHandle, webview: tauri::Webview, hosts: State<Hosts>, target: String,
+    password: Option<String>, identity_file: Option<String>, passphrase: Option<String>) -> Result<String, String> {
+    use tauri::Manager;
+    use plydesk_core::Authentication;
+    runtime::desktop(&webview)?;
+    if identity_file.is_some() && password.is_some() { return Err("Choose either an SSH key or password authentication".into()); }
+    if passphrase.is_some() && identity_file.is_none() { return Err("Choose a key file before providing its passphrase".into()); }
+    let key = identity_file.map(|path| ssh_keys::resolve(&path, &app.path().home_dir().map_err(|e| e.to_string())?)).transpose()?;
+    let auth = if let Some(path) = key.as_deref() { Authentication::Key { path, passphrase: passphrase.as_deref() } }
+        else if let Some(password) = password.as_deref() { Authentication::Password(password) } else { Authentication::Automatic };
     let mut map = hosts.0.lock().map_err(|e| e.to_string())?;
     if map.contains_key(&target) {
         return Ok(format!("already connected to {target}"));
     }
-    let h = Host::connect_with(&target, password.as_deref()).map_err(|e| e.to_string())?;
+    let h = Host::connect_using(&target, auth).map_err(|e| e.to_string())?;
     map.insert(target.clone(), h);
     Ok(format!("connected to {target}"))
 }
@@ -1055,6 +1065,7 @@ fn main() {
         .register_uri_scheme_protocol("appview", runtime::protocol)
         .invoke_handler({
             let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
+            ssh_keys::ssh_keys_list,
             shortcuts::shortcuts_list, shortcuts::shortcuts_save, shortcuts::shortcuts_remove,
             shortcuts::shortcut_web_open, shortcuts::shortcut_web_close, shortcuts::shortcut_web_snapshot, shortcuts::shortcut_web_browser,
             index::index_build, index::index_search, index::index_status,

@@ -96,8 +96,8 @@ function makeApi(getHost: () => string) {
   const t = () => ({ target: getHost() })
   return {
   host: {
-    connect: (target: string, password?: string) =>
-      invoke<string>('connect', { target, password }).then(r => { setHost(target); return r }),
+    connect: (target: string, password?: string, identityFile?: string, passphrase?: string) =>
+      invoke<string>('connect', { target, password, identityFile, passphrase }).then(r => { setHost(target); return r }),
     disconnect: () => invoke<void>('disconnect', t()),
     current: () => getHost(),
   },
@@ -310,21 +310,21 @@ function makeApi(getHost: () => string) {
   },
 
   /**
-   * Remembered connections. Stores host and user only — never the password.
-   * Re-connecting always asks again, which is the point.
+   * Remembered machines and their authentication preference. Secrets are never persisted.
    */
   conns: {
     list(): SavedConn[] {
       return (fw.prefs.get<SavedConn[]>('connections', []))
         .slice().sort((a, b) => b.lastUsed - a.lastUsed)
     },
-    remember(user: string, host: string, name?: string) {
+    remember(user: string, host: string, name?: string, authentication: 'key' | 'password' = 'key', identityFile?: string) {
       const all = fw.prefs.get<SavedConn[]>('connections', [])
       const prev = all.find(c => c.user === user && c.host === host)
       const rest = all.filter(c => !(c.user === user && c.host === host))
       // Keep the last known name if this connection did not learn one, so a
       // machine does not lose its name because hostname1 was slow once.
-      rest.push({ user, host, lastUsed: Date.now(), name: name ?? prev?.name })
+      rest.push({ user, host, lastUsed: Date.now(), name: name ?? prev?.name,
+        authentication, identityFile: authentication === 'key' ? identityFile : undefined })
       fw.prefs.set('connections', rest)
     },
     forget(user: string, host: string) {

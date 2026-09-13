@@ -26,6 +26,16 @@ installed this way it simply opens. Removing it is `rm -rf
 
 ## What it does
 
+The connection screen supports **SSH key** and **Password** authentication.
+Choose a private key from the `~/.ssh` dropdown, or select **Custom path…** to
+type a path such as `~/.ssh/work_key` or browse for a file elsewhere. Encrypted
+keys have an optional passphrase field. **Automatic — SSH config and agent**
+keeps the usual SSH configuration and agent behavior.
+
+The authentication choice and key path are remembered with each machine.
+Passwords and passphrases are not remembered, and key contents are never sent
+to the desktop UI or copied into Plydesk’s settings.
+
 Connect with `user@host` and you get a desktop for that machine:
 
 - **Files** over the SFTP subsystem — typed attributes, server-side copy, and

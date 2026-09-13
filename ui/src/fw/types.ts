@@ -48,6 +48,9 @@ export interface SavedConn {
   host: string
   user: string
   lastUsed: number
+  authentication?: 'key' | 'password'
+  /** A local key path, never the contents or passphrase. Absent means automatic SSH keys/agent. */
+  identityFile?: string
   /**
    * What the machine calls itself, remembered from the last connection.
    *

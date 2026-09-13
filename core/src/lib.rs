@@ -69,14 +69,26 @@ pub struct Host {
     passwd: Option<HashMap<u32, String>>,
 }
 
+/// Authentication for a new SSH master. Secrets are used only while connecting.
+#[derive(Clone, Copy)]
+pub enum Authentication<'a> {
+    Automatic,
+    Password(&'a str),
+    Key { path: &'a std::path::Path, passphrase: Option<&'a str> },
+}
+
 impl Host {
     pub fn connect(target: &str) -> Result<Host> {
         Host::connect_with(target, None)
     }
 
     pub fn connect_with(target: &str, password: Option<&str>) -> Result<Host> {
-        let ctl = control_path(target);
-        ensure_master(target, &ctl, password)?;
+        Self::connect_using(target, password.map(Authentication::Password).unwrap_or(Authentication::Automatic))
+    }
+
+    pub fn connect_using(target: &str, auth: Authentication<'_>) -> Result<Host> {
+        let ctl = authentication_control_path(target, auth);
+        ensure_master(target, &ctl, auth)?;
 
         let mut shell = Command::new("ssh")
             // LC_ALL is set here rather than exported inside the shell, because
@@ -379,7 +391,23 @@ fn bus_socket_path(target: &str) -> String {
     format!("{home}/.plydesk-bus-{safe}.sock")
 }
 
-fn ensure_master(target: &str, ctl: &str, password: Option<&str>) -> Result<()> {
+fn authentication_control_path(target: &str, auth: Authentication<'_>) -> String {
+    // A selected key must not silently reuse a master authenticated with a
+    // different key (or the automatic agent selection).
+    let (kind, identity) = match auth {
+        Authentication::Automatic => return control_path(target),
+        Authentication::Password(_) => ("password", &[][..]),
+        Authentication::Key { path, .. } => ("key", path.as_os_str().as_encoded_bytes()),
+    };
+    let mut hash = 0xcbf29ce484222325u64;
+    for byte in target.bytes().chain(std::iter::once(0)).chain(identity.iter().copied()) {
+        hash = (hash ^ byte as u64).wrapping_mul(0x100000001b3);
+    }
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+    format!("{home}/.plydesk-{kind}-{hash:016x}.sock")
+}
+
+fn ensure_master(target: &str, ctl: &str, auth: Authentication<'_>) -> Result<()> {
     let alive = Command::new("ssh")
         .args(["-S", ctl, "-O", "check", target])
         .stdout(Stdio::null()).stderr(Stdio::null())
@@ -388,6 +416,22 @@ fn ensure_master(target: &str, ctl: &str, password: Option<&str>) -> Result<()> 
 
     let _ = std::fs::remove_file(ctl);
 
+    let (mut cmd, _guard) = master_command(target, ctl, auth)?;
+    let out = cmd.output().map_err(|e| Error::Spawn(e.to_string()))?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        let err = String::from_utf8_lossy(&out.stderr);
+        let msg = err.lines()
+            .find(|l| !l.trim().is_empty() && !l.contains("Warning: Permanently added"))
+            .unwrap_or("connection failed")
+            .trim()
+            .to_string();
+        Err(Error::Spawn(msg))
+    }
+}
+
+fn master_command(target: &str, ctl: &str, auth: Authentication<'_>) -> Result<(Command, Option<AskPass>)> {
     let mut cmd = Command::new("ssh");
     cmd.args([
         "-M", "-S", ctl,
@@ -395,11 +439,21 @@ fn ensure_master(target: &str, ctl: &str, password: Option<&str>) -> Result<()> 
         "-o", "ConnectTimeout=10",
         "-o", "ServerAliveInterval=15",
         "-o", "StrictHostKeyChecking=accept-new",
-        "-f", "-N", target,
+        "-f", "-N",
     ]);
-
-    // Keep the askpass files alive until ssh has exited.
-    let _guard = match password {
+    let secret = match auth {
+        Authentication::Automatic => None,
+        Authentication::Password(password) => {
+            cmd.args(["-o", "PreferredAuthentications=password,keyboard-interactive", "-o", "PubkeyAuthentication=no"]);
+            Some(password)
+        }
+        Authentication::Key { path, passphrase } => {
+            cmd.arg("-i").arg(path).args(["-o", "IdentitiesOnly=yes", "-o", "PreferredAuthentications=publickey",
+                "-o", "PasswordAuthentication=no", "-o", "KbdInteractiveAuthentication=no"]);
+            passphrase
+        }
+    };
+    let guard = match secret {
         None => {
             cmd.arg("-o").arg("BatchMode=yes");
             None
@@ -419,18 +473,8 @@ fn ensure_master(target: &str, ctl: &str, password: Option<&str>) -> Result<()> 
         }
     };
 
-    let out = cmd.output().map_err(|e| Error::Spawn(e.to_string()))?;
-    if out.status.success() {
-        Ok(())
-    } else {
-        let err = String::from_utf8_lossy(&out.stderr);
-        let msg = err.lines()
-            .find(|l| !l.trim().is_empty() && !l.contains("Warning: Permanently added"))
-            .unwrap_or("connection failed")
-            .trim()
-            .to_string();
-        Err(Error::Spawn(msg))
-    }
+    cmd.arg(target);
+    Ok((cmd, guard))
 }
 
 /// Temporary 0600 password file plus the 0700 helper ssh runs to read it.
@@ -439,11 +483,10 @@ struct AskPass { dir: std::path::PathBuf, script: std::path::PathBuf }
 
 impl AskPass {
     fn new(password: &str) -> Result<AskPass> {
-        use std::os::unix::fs::PermissionsExt;
-        let base = std::env::temp_dir().join(format!("plydesk-{}-{}", std::process::id(), now_nanos()));
-        std::fs::create_dir_all(&base).map_err(|e| Error::Io(e.to_string()))?;
-        std::fs::set_permissions(&base, std::fs::Permissions::from_mode(0o700))
-            .map_err(|e| Error::Io(e.to_string()))?;
+        use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+        let base = std::env::temp_dir().join(format!("plydesk-{}-{}", std::process::id(), nonce()));
+        std::fs::DirBuilder::new().mode(0o700).create(&base).map_err(|e| Error::Io(e.to_string()))?;
+        let guard = AskPass { script: base.join("askpass"), dir: base.clone() };
 
         let pw = base.join("pw");
         std::fs::write(&pw, password).map_err(|e| Error::Io(e.to_string()))?;
@@ -451,12 +494,12 @@ impl AskPass {
             .map_err(|e| Error::Io(e.to_string()))?;
 
         let script = base.join("askpass");
-        std::fs::write(&script, format!("#!/bin/sh\nexec cat {}\n", pw.display()))
+        std::fs::write(&script, format!("#!/bin/sh\nexec cat {}\n", shq(&pw.to_string_lossy())))
             .map_err(|e| Error::Io(e.to_string()))?;
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o700))
             .map_err(|e| Error::Io(e.to_string()))?;
 
-        Ok(AskPass { dir: base, script })
+        Ok(guard)
     }
 }
 
@@ -469,6 +512,66 @@ fn now_nanos() -> u128 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod authentication_tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn selected_keys_are_single_arguments_and_cannot_fall_back_to_password_authentication() {
+        let path = Path::new("/tmp/work key ' $(literal)");
+        let (cmd, guard) = master_command("user@server", "/tmp/control", Authentication::Key { path, passphrase: None }).unwrap();
+        let args: Vec<_> = cmd.get_args().map(|s| s.to_string_lossy().into_owned()).collect();
+        assert!(args.windows(2).any(|a| a == ["-i", path.to_str().unwrap()]));
+        for option in ["IdentitiesOnly=yes", "PreferredAuthentications=publickey", "PasswordAuthentication=no", "KbdInteractiveAuthentication=no", "BatchMode=yes"] {
+            assert!(args.iter().any(|a| a == option));
+        }
+        assert_eq!(args.last().unwrap(), "user@server"); assert!(guard.is_none());
+    }
+
+    #[test]
+    fn authentication_choices_do_not_reuse_a_different_identitys_master() {
+        let target = "user@server";
+        let one = Authentication::Key { path: Path::new("/tmp/key-one"), passphrase: None };
+        let two = Authentication::Key { path: Path::new("/tmp/key-two"), passphrase: None };
+        assert_ne!(authentication_control_path(target, one), authentication_control_path(target, two));
+        assert_ne!(authentication_control_path(target, one), control_path(target));
+        assert_ne!(authentication_control_path(target, Authentication::Password("fixture")), control_path(target));
+        assert_ne!(authentication_control_path(target, one), authentication_control_path("another@server", one));
+        assert_eq!(authentication_control_path(target, one), authentication_control_path(target, one));
+    }
+
+    #[test]
+    fn password_authentication_uses_a_temporary_private_helper_and_no_secret_arguments() {
+        use std::os::unix::fs::PermissionsExt;
+        let secret = "temporary credential fixture";
+        let (cmd, guard) = master_command("user@server", "/tmp/control", Authentication::Password(secret)).unwrap();
+        assert!(cmd.get_args().any(|a| a == "PubkeyAuthentication=no"));
+        assert!(!cmd.get_args().any(|a| a == secret));
+        assert!(!cmd.get_envs().any(|(_, v)| v.is_some_and(|v| v == secret)));
+        let guard = guard.unwrap(); let dir = guard.dir.clone();
+        assert_eq!(std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777, 0o700);
+        assert_eq!(std::fs::metadata(dir.join("pw")).unwrap().permissions().mode() & 0o777, 0o600);
+        let output = Command::new(&guard.script).output().unwrap();
+        assert!(output.status.success()); assert_eq!(String::from_utf8(output.stdout).unwrap(), secret);
+        drop(guard); assert!(!dir.exists());
+    }
+
+    #[test]
+    fn encrypted_keys_can_be_unlocked_without_a_terminal() {
+        let secret = "encrypted test key fixture";
+        let guard = AskPass::new(secret).unwrap();
+        let path = guard.dir.join("key with spaces");
+        let created = Command::new("ssh-keygen").args(["-q", "-t", "ed25519", "-N", secret, "-C", "plydesk-test", "-f"]).arg(&path).output().unwrap();
+        assert!(created.status.success());
+        let output = Command::new("ssh-keygen").arg("-y").arg("-f").arg(path)
+            .env("SSH_ASKPASS", &guard.script).env("SSH_ASKPASS_REQUIRE", "force").env("DISPLAY", ":0")
+            .stdin(Stdio::null()).output().unwrap();
+        assert!(output.status.success(), "encrypted fixture key should unlock using askpass");
+        assert!(String::from_utf8(output.stdout).unwrap().starts_with("ssh-ed25519 "));
+    }
 }
 
 // ---- domain types -------------------------------------------------------

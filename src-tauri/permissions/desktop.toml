@@ -2,6 +2,7 @@
 identifier = "desktop-commands"
 description = "Native commands for the trusted desktop webview only."
 commands.allow = [
+  "ssh_keys_list",
   "shortcuts_list",
   "shortcuts_save",
   "shortcuts_remove",
