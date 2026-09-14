@@ -14,13 +14,15 @@ use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize, ChildK
 use serde::Serialize;
 use std::collections::HashMap;
 use std::io::{Read, Write};
-use std::sync::Mutex;
+use std::sync::{Mutex, Arc, atomic::{AtomicU32, Ordering}};
 use tauri::{AppHandle, Emitter, Manager};
 
 pub struct Session {
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
     killer: Box<dyn ChildKiller + Send + Sync>,
+    target: String,
+    remote_pid: Arc<AtomicU32>,
 }
 
 #[derive(Default)]
@@ -37,6 +39,53 @@ struct Chunk {
 struct Exit {
     id: String,
     code: Option<i32>,
+}
+
+/// Start the user's login shell in a folder without injecting input into its PTY.
+pub fn directory_command(cwd: &str) -> Result<String, String> {
+    if !cwd.starts_with('/') || cwd.len() > 4096 || cwd.contains('\0') {
+        return Err("Choose an absolute remote directory path".into());
+    }
+    let quote = |value: &str| format!("'{}'", value.replace('\'', "'\\''"));
+    let script = format!("cd -- {} || exit $?; exec \"${{SHELL:-/bin/sh}}\" -l", quote(cwd));
+    Ok(format!("exec /bin/sh -c {}", quote(&script)))
+}
+
+// A one-time, per-session handshake identifies the remote shell. Reading its
+// /proc cwd works with bash, zsh and fish without changing users' startup files.
+struct ShellHandshake { prefix: Vec<u8>, pending: Vec<u8>, done: bool }
+impl ShellHandshake {
+    fn new(token: &str) -> Self {
+        Self { prefix: format!("\x1b]777;plydesk={token};").into_bytes(), pending: vec![], done: false }
+    }
+    fn feed(&mut self, bytes: &[u8]) -> Option<u32> {
+        if self.done { return None; }
+        self.pending.extend_from_slice(bytes);
+        if let Some(start) = self.pending.windows(self.prefix.len()).position(|part| part == self.prefix) {
+            let digits = &self.pending[start + self.prefix.len()..];
+            if let Some(end) = digits.iter().position(|b| *b == 7) {
+                self.done = true;
+                let pid = std::str::from_utf8(&digits[..end]).ok()?.parse::<u32>().ok()?;
+                return (pid > 0).then_some(pid);
+            }
+        }
+        if self.pending.len() > 512 { self.pending.drain(..self.pending.len() - 512); }
+        None
+    }
+}
+
+fn tracked_command(command: Option<&str>, token: &str) -> String {
+    let script = format!("printf '\\033]777;plydesk={token};%s\\007' \"$$\"; {}",
+        command.unwrap_or("exec \"${SHELL:-/bin/sh}\" -l"));
+    format!("exec /bin/sh -c '{}'", script.replace('\'', "'\\''"))
+}
+
+pub fn location_source(terms: &Terminals, id: &str) -> Result<Option<(String, u32)>, String> {
+    let sessions = terms.0.lock().map_err(|e| e.to_string())?;
+    Ok(sessions.get(id).and_then(|s| {
+        let pid = s.remote_pid.load(Ordering::Relaxed);
+        (pid > 0).then(|| (s.target.clone(), pid))
+    }))
 }
 
 pub fn open(
@@ -60,7 +109,8 @@ pub fn open(
     // -tt forces a remote PTY even though our stdin is a pty we made, not a
     // terminal the user typed into.
     cmd.args(["-tt", "-S", control_path, "-o", "BatchMode=yes", target]);
-    if let Some(command) = command { cmd.arg(command); }
+    let token = uuid::Uuid::new_v4().to_string();
+    cmd.arg(tracked_command(command, &token));
     cmd.env("TERM", "xterm-256color");
 
     let mut child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
@@ -70,16 +120,20 @@ pub fn open(
     let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
 
     let killer = child.clone_killer();
-    sessions.insert(id.clone(), Session { master: pair.master, writer, killer });
+    let remote_pid = Arc::new(AtomicU32::new(0));
+    sessions.insert(id.clone(), Session { master: pair.master, writer, killer,
+        target: target.into(), remote_pid: remote_pid.clone() });
     drop(sessions);
     let app2 = app.clone();
     let id2 = id.clone();
     std::thread::spawn(move || {
+        let mut handshake = ShellHandshake::new(&token);
         let mut buf = [0u8; 8192];
         loop {
             match reader.read(&mut buf) {
                 Ok(0) | Err(_) => break,
                 Ok(n) => {
+                    if let Some(pid) = handshake.feed(&buf[..n]) { remote_pid.store(pid, Ordering::Relaxed); }
                     let _ = app2.emit_to(
                         "main", "term:data",
                         Chunk { id: id2.clone(), b64: plydesk_core::b64encode(&buf[..n]) },
@@ -116,4 +170,59 @@ pub fn close(terms: &Terminals, id: &str) -> Result<(), String> {
         let _ = s.killer.kill();
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{fs, os::unix::fs::PermissionsExt, process::Command};
+
+    #[test]
+    fn shell_handshake_survives_fragmented_output_and_is_bound_to_its_session() {
+        let mut parser = ShellHandshake::new("test-session");
+        assert_eq!(parser.feed(b"\x1b]777;plydesk=another-session;123\x07"), None);
+        let marker = b"\x1b]777;plydesk=test-session;456\x07";
+        for byte in &marker[..marker.len() - 1] { assert_eq!(parser.feed(&[*byte]), None); }
+        assert_eq!(parser.feed(&[7]), Some(456));
+        assert_eq!(parser.feed(b"\x1b]777;plydesk=test-session;789\x07"), None);
+        let mut bounded = ShellHandshake::new("unused");
+        bounded.feed(&vec![b'x'; 10000]); assert!(bounded.pending.len() <= 512);
+    }
+
+    #[test]
+    fn tracking_preserves_the_shell_pid_and_command_exit_status() {
+        let command = "exec /bin/sh -c 'printf \"PID:%s\" \"$$\"; exit 7'";
+        let output = Command::new("/bin/sh").args(["-c", &tracked_command(Some(command), "fixture")]).output().unwrap();
+        assert_eq!(output.status.code(), Some(7));
+        let pid = ShellHandshake::new("fixture").feed(&output.stdout).unwrap();
+        assert!(String::from_utf8(output.stdout).unwrap().ends_with(&format!("PID:{pid}")));
+    }
+
+    #[test]
+    fn directory_launch_preserves_literal_paths_and_does_not_start_in_a_missing_folder() {
+        let root = std::env::temp_dir().join(format!("plydesk-terminal-test-{}", uuid::Uuid::new_v4()));
+        let folder = root.join("a folder ' $(printf injected) ; &\nwith newline");
+        fs::create_dir_all(&folder).unwrap();
+        let shell = root.join("login shell");
+        fs::write(&shell, "#!/bin/sh\nprintf '%s\\n' \"$PWD\" \"$@\"\n").unwrap();
+        fs::set_permissions(&shell, fs::Permissions::from_mode(0o700)).unwrap();
+        let run = |path: &std::path::Path| Command::new("/bin/sh")
+            .args(["-c", &directory_command(path.to_str().unwrap()).unwrap()])
+            .env("SHELL", &shell).output().unwrap();
+        let output = run(&folder);
+        assert!(output.status.success());
+        assert_eq!(String::from_utf8(output.stdout).unwrap(), format!("{}\n-l\n", folder.display()));
+        let missing = run(&root.join("missing"));
+        assert!(!missing.status.success());
+        assert!(missing.stdout.is_empty(), "the shell must not launch in a fallback directory");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn directory_launch_requires_an_absolute_path_without_nul_bytes() {
+        for path in ["", "~", "relative/folder", "/tmp/bad\0path"] {
+            assert!(directory_command(path).is_err());
+        }
+        assert!(directory_command("/").is_ok());
+    }
 }

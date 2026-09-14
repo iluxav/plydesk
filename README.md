@@ -51,6 +51,27 @@ Connect with `user@host` and you get a desktop for that machine:
 Nothing is installed on the remote to make the first five work. Every one of
 them rides the single SSH connection you already opened.
 
+### Terminal workspace
+
+Terminal has a directory sidebar, tabs, and resizable panes. Pin the active
+directory from the toolbar or add a path with the sidebar’s **+** button.
+Pins are saved per machine and open new tabs. **Open in Files** follows the
+active remote shell’s directory, including changes made with `cd`.
+
+- **⌘T** opens a tab; **⇧⌘T** splits the active pane to the right. The toolbar
+  also offers a split below. New sessions inherit the active directory.
+- Drag a divider to resize panes; double-click it to balance them. A pane’s
+  expand button temporarily fills the tab without closing the other sessions.
+- **⌃Tab / ⇧⌃Tab** switch tabs. Double-click a tab to rename it.
+- **⌘F** searches the active pane’s scrollback; **⌘+ / ⌘− / ⌘0** adjust text
+  size; **⌘K** clears scrollback.
+- **⌘W** closes the active pane; **⇧⌘W** closes its tab. Closing the last tab
+  closes the Terminal window. Hidden tabs keep running until closed.
+
+The directory bar tracks the shell launched by Plydesk on the connected Linux
+machine; a separate shell inside nested SSH or tmux is not tracked. TUI app
+shortcuts keep their dedicated command window and exit behavior.
+
 ## Why it is built this way
 
 Linux desktops do not shell out; they call typed IPC. `systemctl` is itself a

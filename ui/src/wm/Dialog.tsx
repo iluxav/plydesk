@@ -14,7 +14,7 @@ import { useModalFocus } from './useModalFocus'
  */
 type Spec =
   | { kind: 'prompt'; title: string; label?: string; value?: string; placeholder?: string
-      okLabel?: string; password?: boolean; resolve: (v: string | null) => void }
+      okLabel?: string; password?: boolean; allowEmpty?: boolean; resolve: (v: string | null) => void }
   | { kind: 'confirm'; title: string; message?: string; okLabel?: string; danger?: boolean
       resolve: (v: boolean) => void }
   | { kind: 'alert'; title: string; message?: string; resolve: () => void }
@@ -53,8 +53,8 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   // `never` if we try to call it generically.
   const finish = (accepted: boolean) => {
     if (!spec) return
-    if (accepted && spec.kind === 'prompt' && !(spec.password ? text : text.trim())) return
-    if (spec.kind === 'prompt') spec.resolve(accepted ? ((spec.password ? text : text.trim()) || null) : null)
+    if (accepted && spec.kind === 'prompt' && !spec.allowEmpty && !(spec.password ? text : text.trim())) return
+    if (spec.kind === 'prompt') spec.resolve(accepted ? (spec.password ? text : text.trim()) : null)
     else if (spec.kind === 'confirm') spec.resolve(accepted)
     else spec.resolve()
     setSpec(null)
@@ -107,7 +107,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
               )}
               <button
                 autoFocus={spec.kind !== 'prompt'}
-                disabled={spec.kind === 'prompt' && !(spec.password ? text : text.trim())}
+                disabled={spec.kind === 'prompt' && !spec.allowEmpty && !(spec.password ? text : text.trim())}
                 onClick={accept}
                 className={`px-3 py-1.5 rounded text-xs font-medium
                   ${spec.kind === 'confirm' && spec.danger

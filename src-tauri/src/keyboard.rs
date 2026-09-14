@@ -46,7 +46,9 @@ mod mac {
 pub async fn keyboard_configure(webview: tauri::Webview, app: tauri::AppHandle, config: Configuration) -> Result<Status, String> {
     if webview.label() != "main" { return Err("desktop keyboard is available only to the main view".into()); }
     if config.bindings.len() > 32 || config.bindings.iter().any(|b| b.modifiers > 15 || b.modifiers & 14 == 0
-        || b.code > 126 || !["snap-left", "snap-right", "maximize", "restore", "next-window", "previous-window", "minimize"].contains(&b.action.as_str())) {
+        || b.code > 126 || !["snap-left", "snap-right", "maximize", "restore", "next-window", "previous-window", "minimize", "launcher",
+            "terminal-new-tab", "terminal-split", "terminal-close-pane", "terminal-close-tab", "terminal-search", "terminal-clear",
+            "terminal-zoom-in", "terminal-zoom-out", "terminal-zoom-reset", "terminal-next-tab", "terminal-previous-tab"].contains(&b.action.as_str())) {
         return Err("invalid desktop shortcuts".into());
     }
     #[cfg(target_os = "macos")]

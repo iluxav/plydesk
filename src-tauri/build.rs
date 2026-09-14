@@ -87,6 +87,7 @@ fn main() {
             "remove_path",
             "upload_file",
             "term_open",
+            "term_directory",
             "term_write",
             "term_resize",
             "term_close",

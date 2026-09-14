@@ -41,7 +41,7 @@ export interface AppDef {
 export const APPS: AppDef[] = [
   { id: 'files',  title: 'Files',  icon: '📁', component: FileExplorer, w: 900, h: 560 },
   { id: 'editor', title: 'Editor', icon: '📝', component: Editor, w: 980, h: 640 },
-  { id: 'terminal', title: 'Terminal', icon: '⌨️', component: Terminal, w: 780, h: 460 },
+  { id: 'terminal', title: 'Terminal', icon: '⌨️', component: Terminal, w: 1080, h: 650 },
   { id: 'settings', title: 'Settings', icon: '⚙️', component: Settings, w: 920, h: 680 },
   { id: 'packages', title: 'Packages', icon: '📦', component: Packages, w: 900, h: 600 },
   {

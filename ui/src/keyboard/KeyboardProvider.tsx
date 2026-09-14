@@ -9,6 +9,7 @@ import { workArea } from '../wm/workArea'
 import { ACTIONS, MAC_CODES, META, CTRL, ALT, modifiers, type Shortcut } from './shortcuts'
 import { useKeyboardPreferences } from './preferences'
 import './keyboard.css'
+import { TERMINAL_KEYS } from '../apps/terminal/shortcuts'
 
 type NativeEvent = { action: string; code: number; modifiers: number; repeat: boolean }
 type Status = { native: boolean; accessibility: boolean; captureReady: boolean }
@@ -33,6 +34,8 @@ export function KeyboardProvider({ active, onSwitchHost, onLauncher, disabled, c
 }) {
   const { state, dispatch } = useWM()
   const preferences = useKeyboardPreferences()
+  const frontWindow = [...state.wins].filter(w => w.host === active && !w.minimized).sort((a, b) => b.z - a.z)[0]
+  const terminalActive = frontWindow?.appId === 'terminal'
   const [status, setStatus] = useState<Status>({ native: false, accessibility: false, captureReady: false })
   const [error, setError] = useState('')
   const [listening, setListening] = useState(!isTauri())
@@ -104,6 +107,10 @@ export function KeyboardProvider({ active, onSwitchHost, onLauncher, disabled, c
     if (event.action === 'launcher') { finish(false); onLauncher?.(); return }
     const front = [...current.state.wins].filter(w => w.host === current.active && !w.minimized).sort((a, b) => b.z - a.z)[0]
     if (!front) return
+    if (event.action.startsWith('terminal-') && front.appId === 'terminal') {
+      window.dispatchEvent(new CustomEvent('terminal-action', { detail: { winId: front.id, action: event.action.slice(9) } }))
+      return
+    }
     if (event.action === 'minimize') { dispatch({ t: 'minimize', id: front.id }); return }
     const layouts: Record<string, 'left' | 'right' | 'maximized' | 'restore'> = { 'snap-left': 'left', 'snap-right': 'right', maximize: 'maximized', restore: 'restore' }
     const layout = layouts[event.action]
@@ -166,16 +173,18 @@ export function KeyboardProvider({ active, onSwitchHost, onLauncher, disabled, c
   useEffect(() => {
     if (!isTauri() || !listening) return
     let live = true
-    const bindings = ACTIONS.flatMap(a => {
+    const bindings: Array<{ action: string; code: number; modifiers: number }> = ACTIONS.flatMap(a => {
       const shortcut = preferences.bindings[a.id]
       return shortcut ? [{ action: a.id, code: MAC_CODES[shortcut.code], modifiers: shortcut.modifiers }] : []
     })
+    if (terminalActive) bindings.push(...TERMINAL_KEYS.filter(key => !bindings.some(b => b.code === MAC_CODES[key.code] && b.modifiers === key.modifiers))
+      .map(key => ({ action: `terminal-${key.action}`, code: MAC_CODES[key.code], modifiers: key.modifiers })))
     void configure({ bindings, enabled: !disabled && (!blocked || recording), recording,
       switching: isSwitching, captureSystem: preferences.captureSystem }).then(value => {
         if (live) { setStatus(value); setError('') }
       }).catch(e => { if (live) setError(String(e)) })
     return () => { live = false }
-  }, [preferences, disabled, blocked, recording, isSwitching, listening, revision])
+  }, [preferences, disabled, blocked, recording, isSwitching, listening, revision, terminalActive])
 
   const context = useMemo(() => ({ status, error, setRecorder, refresh }), [status, error, setRecorder, refresh])
   return <Context.Provider value={context}>

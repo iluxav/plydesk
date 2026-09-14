@@ -717,14 +717,28 @@ fn term_open(
     cols: u16,
     rows: u16,
     shortcut_id: Option<String>,
+    cwd: Option<String>,
 ) -> Result<Option<shortcuts::Shortcut>, String> {
     let ctl = {
         let map = hosts.0.lock().map_err(|e| e.to_string())?;
         map.get(&target).ok_or("not connected")?.control_path().to_string()
     };
     let launch = shortcut_id.map(|id| shortcuts::terminal_launch(&app, &id, &target)).transpose()?;
-    term::open(&app, &terms, id, &target, &ctl, cols, rows, launch.as_ref().map(|(_, command)| command.as_str()))?;
+    // Saved TUI shortcuts keep their own command and working directory.
+    let directory_command = if launch.is_none() { cwd.as_deref().map(term::directory_command).transpose()? } else { None };
+    let command = launch.as_ref().map(|(_, command)| command.as_str()).or(directory_command.as_deref());
+    term::open(&app, &terms, id, &target, &ctl, cols, rows, command)?;
     Ok(launch.map(|(shortcut, _)| shortcut))
+}
+
+#[tauri::command]
+fn term_directory(webview: tauri::Webview, hosts: State<Hosts>, terms: State<term::Terminals>, id: String) -> Result<Option<String>, String> {
+    runtime::desktop(&webview)?;
+    let Some((target, pid)) = term::location_source(&terms, &id)? else { return Ok(None) };
+    with_host(&hosts, &target, |h| {
+        let output = h.run_argv(&["readlink".into(), "-n".into(), "--".into(), format!("/proc/{pid}/cwd")], None)?;
+        Ok((output.code == 0 && output.stdout.starts_with('/') && !output.stdout.contains('\0')).then_some(output.stdout))
+    })
 }
 
 #[tauri::command]
@@ -1087,7 +1101,7 @@ fn main() {
             deps_probe, deps_install, deps_remove, deps_installed, open_web_window,
             list_directory, read_text, download_file,
             write_text, make_dir, rename_path, copy_path, remove_path, upload_file,
-            term_open, term_write, term_resize, term_close, exec, list_plugins,
+            term_open, term_directory, term_write, term_resize, term_close, exec, list_plugins,
             forward_port, cancel_forward, list_forwards, open_url,
             forward_socket, cancel_forward_socket
         ];

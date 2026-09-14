@@ -348,6 +348,8 @@ export function FileExplorer({ setTitle, path = '~' }: { setTitle?: (t: string) 
         shortcut: '\u23CE',
         onSelect: () => open(target),
       })
+      if (target.kind === 'dir') items.push({ label: 'Open in Terminal', icon: '⌨',
+        onSelect: () => fw.ui.open('terminal', { cwd: fw.path.join(cwd, target.name), host: fw.host.current() }) })
     }
     if (list.some(s => s.kind !== 'dir')) {
       items.push({ label: many ? 'Download selected' : 'Download', icon: '\u2B07',
@@ -373,6 +375,9 @@ export function FileExplorer({ setTitle, path = '~' }: { setTitle?: (t: string) 
   /** Right-click on empty space acts on the directory itself. */
   function itemsForBackground(): MenuItem[] {
     return [
+      { label: 'Open in Terminal', icon: '⌨', disabled: !d || busy,
+        onSelect: () => fw.ui.open('terminal', { cwd, host: fw.host.current() }) },
+      { type: 'separator' },
       { label: 'New folder', icon: '📁',
         onSelect: async () => {
           const n = await dlg.prompt({ title: 'New folder', label: `Create inside ${cwd}`,
