@@ -171,6 +171,7 @@ pub async fn shortcut_web_open(app: tauri::AppHandle, webview: Webview, id: Stri
         .disable_drag_drop_handler();
     let view = app.get_window("main").ok_or("Desktop is unavailable")?.add_child(builder,tauri::LogicalPosition::new(-10000.,-10000.),tauri::LogicalSize::new(1.,1.)).map_err(|e| e.to_string())?;
     let _ = view.hide();
+    let _ = crate::views::adopt(&view);
     app.state::<Shortcuts>().views.lock().map_err(|e| e.to_string())?.insert(label.clone(), id);
     Ok(label)
 }

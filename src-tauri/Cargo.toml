@@ -17,3 +17,10 @@ plydesk-core = { path = "../core" }
 portable-pty = "0.9"
 tauri-plugin-drag = "2.1.1"
 tauri-plugin-dialog = "2.7.3"
+
+# Placing child webviews over the desktop on Linux, and picturing them (src/views.rs, src/runtime.rs).
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = "0.18"
+# Pictures of hidden views (runtime.rs, snapshot_view): WebKitGTK draws them, cairo encodes the PNG.
+webkit2gtk = "2.0"
+cairo-rs = { version = "0.18", features = ["png"] }

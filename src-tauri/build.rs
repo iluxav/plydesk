@@ -99,5 +99,8 @@ fn main() {
             "open_url",
             "forward_socket",
             "cancel_forward_socket",
+            "native_view_adopt",
+            "native_view_place",
+            "native_view_snapshot",
         ]))).expect("Tauri build failed");
 }

@@ -235,6 +235,17 @@ export function Settings({ setTitle }: { setTitle?: (title: string) => void }) {
                 <button key={value} disabled={busy} aria-pressed={read('radius') === value} onClick={() => void save('desk.radius', deskTokens.radius, value)}>{label}</button>)}</div>
             </SettingsRow>
           </SettingsGroup>
+          <SettingsGroup title="Windows">
+            <SettingsRow id="desk.layout" label="Window layout"
+              description="Tiling arranges windows for you: each new one takes half of the focused window, and closing it gives the space back.">
+              <div className="settings-segmented" aria-label="Window layout">{[['Floating', 'floating'], ['Tiling', 'tiling']].map(([label, value]) =>
+                <button key={value} disabled={busy} aria-pressed={read('layout') === value} onClick={() => void save('desk.layout', deskTokens.layout, value)}>{label}</button>)}</div>
+            </SettingsRow>
+            {read('layout') === 'tiling' && <SettingsRow id="desk.gap" label="Gap between windows">
+              <div className="settings-segmented" aria-label="Gap between windows">{[['None', '0px'], ['Small', '4px'], ['Medium', '8px'], ['Large', '16px']].map(([label, value]) =>
+                <button key={value} disabled={busy} aria-pressed={read('gap') === value} onClick={() => void save('desk.gap', deskTokens.gap, value)}>{label}</button>)}</div>
+            </SettingsRow>}
+          </SettingsGroup>
           <button className="settings-link-row" onClick={() => navigate('wallpaper')}><Icon id="lucide:mountain" size={17} /><span>Change wallpaper</span><Icon id="lucide:chevron-right" size={14} /></button>
           <details className="settings-disclosure" open={customizing} onToggle={e => setCustomizing(e.currentTarget.open)}>
             <summary>Customize colors & surfaces<span>Fine-tune individual desktop elements</span></summary>

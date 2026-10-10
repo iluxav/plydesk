@@ -2,6 +2,8 @@ import { Icon } from './Icon'
 import { useLayoutEffect, useRef, type ReactNode } from 'react'
 import { useWM, type Win } from './store'
 import { layoutRect } from './windowState'
+import { tileRects } from './tiling'
+import { tileGap } from './TileLayer'
 import { workArea } from './workArea'
 
 const HANDLES = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']
@@ -16,6 +18,13 @@ export function Window({ win, children }: { win: Win; children: ReactNode }) {
   const front = state.wins.filter(w => w.host === win.host && !w.minimized).sort((a, b) => b.z - a.z)[0]
   const focused = front?.id === win.id
   const focus = () => dispatch({ t: 'focus', id: win.id })
+  // A tile's place comes from its machine's split tree, not from the window.
+  const tile = win.tiled ? state.tiles[win.host] : undefined
+  const box = (tile && (win.maximized ? { x: 0, y: 0, w: tile.deskW, h: tile.deskH } : tileRects(tile, tileGap(win.host))[win.id])) || win
+  // Tiles never overlap, so an unfocused one can keep its native view on screen
+  // — unless something floats or fills the pane, which a native view would cover.
+  const exposed = !!tile && !win.maximized
+    && !state.wins.some(w => w.host === win.host && !w.minimized && (!w.tiled || w.maximized))
   const toggleMax = () => {
     const pane = el.current?.parentElement
     if (!pane) return
@@ -29,8 +38,8 @@ export function Window({ win, children }: { win: Win; children: ReactNode }) {
     const pane = el.current?.parentElement
     if (!pane) return
     const fit = () => {
-      if (cleanup.current) return
       const w = current.current
+      if (cleanup.current || w.tiled) return
       const area = workArea(pane)
       const width = Math.min(w.w, area.deskW)
       const height = Math.min(w.h, area.deskH)
@@ -47,7 +56,7 @@ export function Window({ win, children }: { win: Win; children: ReactNode }) {
   }, [dispatch, win.id, win.layout])
 
   function gesture(e: React.PointerEvent, dir?: string) {
-    if (e.button !== 0 || win.maximized || cleanup.current) return
+    if (e.button !== 0 || win.maximized || win.tiled || cleanup.current) return
     e.preventDefault(); e.stopPropagation(); focus()
     const node = el.current!, pane = node.parentElement!
     const { deskW, deskH } = workArea(pane)
@@ -89,11 +98,11 @@ export function Window({ win, children }: { win: Win; children: ReactNode }) {
   }
 
   return (
-    <section ref={el} data-window data-window-id={win.id} data-host={win.host} data-focused={focused} tabIndex={-1}
+    <section ref={el} data-window data-window-id={win.id} data-host={win.host} data-focused={focused} data-exposed={exposed} tabIndex={-1}
       aria-label={win.title} onPointerDown={focus} onFocusCapture={focus}
-      style={{ left: win.x, top: win.y, width: win.w, height: win.h, zIndex: win.z,
+      style={{ left: box.x, top: box.y, width: box.w, height: box.h, zIndex: tile && !win.maximized ? 0 : win.z,
         display: win.minimized ? 'none' : undefined }}
-      className={`desktop-window app-${win.appId} ${win.maximized ? 'is-maximized' : ''}`}>
+      className={`desktop-window app-${win.appId} ${win.maximized ? 'is-maximized' : ''} ${tile ? 'is-tiled' : ''}`}>
       <header className="window-titlebar" onPointerDown={e => gesture(e)} onDoubleClick={toggleMax}>
         <div className="window-controls" onPointerDown={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}>
           <button className="window-control close" title="Close window" aria-label={`Close ${win.title}`}
@@ -110,7 +119,7 @@ export function Window({ win, children }: { win: Win; children: ReactNode }) {
         <span className="window-host" title={win.host}><span className="status-dot" />{win.host.replace(/^.*@/, '')}</span>
       </header>
       <div className="window-content">{children}</div>
-      {!win.maximized && HANDLES.map(dir => <div key={dir} aria-hidden data-resize={dir}
+      {!win.maximized && !win.tiled && HANDLES.map(dir => <div key={dir} aria-hidden data-resize={dir}
         onPointerDown={e => gesture(e, dir)} className="window-resize-handle" />)}
     </section>
   )

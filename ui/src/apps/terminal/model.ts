@@ -1,5 +1,6 @@
-export type Axis = 'row' | 'column'
-export type Layout = { kind: 'pane'; id: string } | { kind: 'split'; id: string; axis: Axis; ratio: number; first: Layout; second: Layout }
+import { leaf, paneIds, replace, remove, resize, type Axis, type Layout } from '../../wm/tiling.ts'
+// The split tree is shared with the window manager's tiling mode.
+export { paneIds, layoutRects, type Axis, type Layout, type Rect, type Divider } from '../../wm/tiling.ts'
 export type Pane = { id: string; cwd?: string }
 export type Tab = { id: string; name?: string; layout: Layout; activePane: string }
 export type Workspace = { tabs: Tab[]; activeTab: string; panes: Record<string, Pane> }
@@ -12,24 +13,8 @@ export type Action =
   | { type: 'rename'; tab: string; name: string }
   | { type: 'resize'; tab: string; split: string; ratio: number }
 
-export const paneIds = (layout: Layout): string[] => layout.kind === 'pane' ? [layout.id] : [...paneIds(layout.first), ...paneIds(layout.second)]
-const leaf = (id: string): Layout => ({ kind: 'pane', id })
 export function initialWorkspace(tab: string, pane: Pane): Workspace {
   return { tabs: [{ id: tab, layout: leaf(pane.id), activePane: pane.id }], activeTab: tab, panes: { [pane.id]: pane } }
-}
-function replace(layout: Layout, id: string, next: Layout): Layout {
-  if (layout.kind === 'pane') return layout.id === id ? next : layout
-  return { ...layout, first: replace(layout.first, id, next), second: replace(layout.second, id, next) }
-}
-function remove(layout: Layout, id: string): Layout | null {
-  if (layout.kind === 'pane') return layout.id === id ? null : layout
-  const first = remove(layout.first, id), second = remove(layout.second, id)
-  return first && second ? { ...layout, first, second } : first || second
-}
-function resize(layout: Layout, id: string, ratio: number): Layout {
-  if (layout.kind === 'pane') return layout
-  return layout.id === id ? { ...layout, ratio: Math.max(.12, Math.min(.88, ratio)) }
-    : { ...layout, first: resize(layout.first, id, ratio), second: resize(layout.second, id, ratio) }
 }
 export function workspaceReducer(state: Workspace, action: Action): Workspace {
   if (action.type === 'tab') return { tabs: [...state.tabs, { id: action.id, layout: leaf(action.pane.id), activePane: action.pane.id }],
@@ -58,16 +43,6 @@ export function workspaceReducer(state: Workspace, action: Action): Workspace {
     ? { ...t, name: action.name.trim() || undefined } : { ...t, layout: resize(t.layout, action.split, action.ratio) }) }
 }
 
-export type Rect = { x: number; y: number; w: number; h: number }
-export type Divider = { id: string; axis: Axis; ratio: number; rect: Rect }
-export function layoutRects(layout: Layout, rect: Rect = { x: 0, y: 0, w: 1, h: 1 }): { panes: Record<string, Rect>; dividers: Divider[] } {
-  if (layout.kind === 'pane') return { panes: { [layout.id]: rect }, dividers: [] }
-  const { ratio, axis } = layout
-  const first = axis === 'row' ? { ...rect, w: rect.w * ratio } : { ...rect, h: rect.h * ratio }
-  const second = axis === 'row' ? { ...rect, x: rect.x + first.w, w: rect.w - first.w } : { ...rect, y: rect.y + first.h, h: rect.h - first.h }
-  const a = layoutRects(layout.first, first), b = layoutRects(layout.second, second)
-  return { panes: { ...a.panes, ...b.panes }, dividers: [{ id: layout.id, axis, ratio, rect }, ...a.dividers, ...b.dividers] }
-}
 export type Pin = { path: string; label: string }
 export function parsePins(value: unknown): Pin[] {
   if (!Array.isArray(value)) return []

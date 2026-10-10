@@ -26,7 +26,7 @@
  *   "files.row_hover" = "#ffffff14"
  */
 
-export type TokenType = 'icon' | 'color' | 'length' | 'image'
+export type TokenType = 'icon' | 'color' | 'length' | 'image' | 'choice'
 
 export interface TokenDecl {
   type: TokenType
@@ -34,6 +34,8 @@ export interface TokenDecl {
   default: string
   label: string
   hint?: string
+  /** For a `choice`: the values it may take. Anything else reads as the default. */
+  options?: string[]
 }
 
 export type TokenMap = Record<string, TokenDecl>
@@ -77,7 +79,8 @@ export function declOf(id: string): TokenDecl | undefined {
 
 /** Where a token is stored in the config file. */
 export function configKey(id: string, type: TokenType): string {
-  const section = type === 'icon' ? 'icons.' : type === 'image' ? 'images.' : 'theme.'
+  // A choice is behaviour, not appearance, and `theme.` only admits colours and lengths.
+  const section = type === 'icon' ? 'icons.' : type === 'image' ? 'images.' : type === 'choice' ? 'desktop.' : 'theme.'
   return section + id
 }
 
@@ -125,7 +128,8 @@ export function resolve(id: string, host?: string, seen = new Set<string>()): Re
   // This machine, then the declared default. Those are the only two layers.
   let value: string | undefined = host ? machines[host]?.[key] : undefined
   let layer: Layer = 'machine'
-  if (value === undefined) { value = decl.default; layer = 'default' }
+  // The file is hand-editable and nothing else checks a choice against its options.
+  if (value === undefined || (decl.type === 'choice' && !decl.options?.includes(value))) { value = decl.default; layer = 'default' }
 
   if (value?.startsWith('@')) {
     const target = value.slice(1)

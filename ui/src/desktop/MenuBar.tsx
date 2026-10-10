@@ -69,7 +69,10 @@ export function MenuBar({ hosts, active, onSwitch, onAdd, onDisconnect, onReload
     ...([
       ['Snap left', 'snap-left', 'left'], ['Snap right', 'snap-right', 'right'],
       ['Maximize', 'maximize', 'maximized'], ['Restore size', 'restore', 'restore'],
-    ] as const).map(([label, action, layout]) => ({ label, disabled: !front || (layout === 'restore' && !front.restore),
+    ] as const).map(([label, action, layout]) => ({ label,
+      // A tile has no halves to snap to, and restores from filling the pane rather than from saved bounds.
+      disabled: !front || (front.tiled ? layout === 'left' || layout === 'right' || (layout === 'restore') !== front.maximized
+        : layout === 'restore' && !front.restore),
       shortcut: bindings[action as ActionId] ? formatShortcut(bindings[action as ActionId]) : undefined,
       onSelect: () => {
         const pane = front && document.querySelector<HTMLElement>(`[data-window-id="${CSS.escape(front.id)}"]`)?.parentElement

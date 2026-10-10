@@ -1,12 +1,12 @@
 import { createContext, useContext, useReducer, type ReactNode } from 'react'
 
-import { reducer, type State, type Action } from './windowState'
+import { reducer, initialState, type State, type Action } from './windowState'
 export type { Win } from './windowState'
 
 const Ctx = createContext<{ state: State; dispatch: React.Dispatch<Action> } | null>(null)
 
 export function WindowProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, { wins: [], topZ: 0 })
+  const [state, dispatch] = useReducer(reducer, initialState)
   return <Ctx.Provider value={{ state, dispatch }}>{children}</Ctx.Provider>
 }
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { Webview } from '@tauri-apps/api/webview'
-import { LogicalPosition, LogicalSize } from '@tauri-apps/api/dpi'
+import { placeView, unobstructed } from '../wm/nativeView'
 import type { AppDef } from '../desktop/registry'
 import { Requires } from '../wm/Requires'
 import { Icon } from '../wm/Icon'
@@ -138,7 +138,7 @@ export function PluginView({ app, appProps, host, winId }: { app: AppDef; appPro
   // Geometry is owned by the desktop, never by plugin-supplied coordinates.
   useLayoutEffect(() => {
     const element = slot.current!, windowElement = element.closest<HTMLElement>('[data-window]')!
-    let frame = 0, busy = false, dirty = false, disposed = false
+    let frame = 0, busy = false, dirty = false, disposed = false, hadFocus = false
     const sync = async () => {
       if (busy) { dirty = true; return }
       busy = true
@@ -151,7 +151,10 @@ export function PluginView({ app, appProps, host, winId }: { app: AppDef; appPro
           const dock = document.querySelector<HTMLElement>('.desktop-dock')
           const bottom = window.innerHeight - (dock?.offsetHeight || 0) - 18
           const height = Math.max(0, Math.min(r.bottom, bottom) - r.top)
-          const visible = !loadingRef.current && r.width > 1 && height > 1 && windowElement.dataset.focused === 'true'
+          const focused = windowElement.dataset.focused === 'true'
+          // An app stays live beside the focused window while nothing covers it; it reports a click
+          // back to the desktop, so clicking it still focuses its window.
+          const visible = !loadingRef.current && r.width > 1 && height > 1 && (focused || unobstructed(windowElement))
             && !element.closest('[inert]') && !document.querySelector('[role="menu"], [aria-modal="true"], [data-window-switcher]')
           if (!visible) {
             if (view.shown) {
@@ -171,22 +174,26 @@ export function PluginView({ app, appProps, host, winId }: { app: AppDef; appPro
             }
             if (view.child?.shown) { await view.child.native.hide(); view.child.shown = false }
             if (view.shown) { await view.native.hide(); view.shown = false }
+            hadFocus = false
             continue
           }
           const b = [r.x,r.y,r.width,height].map(Math.round)
-          if (b[0] !== view.bounds[0] || b[1] !== view.bounds[1]) await view.native.setPosition(new LogicalPosition(b[0],b[1]))
-          if (b[2] !== view.bounds[2] || b[3] !== view.bounds[3]) await view.native.setSize(new LogicalSize(b[2],b[3]))
+          await placeView(view.native, b, view.bounds)
           view.bounds = b
-          if (!view.shown && !disposed) { await view.native.show(); await view.native.setFocus(); view.shown = true }
+          if (!view.shown && !disposed) { await view.native.show(); view.shown = true }
           if (view.child) {
             const c = view.child, [x,y,w,h] = c.bounds
             const cx = Math.max(0,Math.min(x,b[2])), cy = Math.max(0,Math.min(y,b[3]))
             const cw = Math.max(0,Math.min(w,b[2]-cx)), ch = Math.max(0,Math.min(h,b[3]-cy))
             if ([cx,cy,cw,ch].every(Number.isFinite) && cw > 1 && ch > 1) {
-              await c.native.setPosition(new LogicalPosition(b[0]+cx,b[1]+cy)); await c.native.setSize(new LogicalSize(cw,ch))
-              if (!c.shown) { await c.native.show(); await c.native.setFocus(); c.shown = true }
+              await placeView(c.native, [b[0]+cx, b[1]+cy, cw, ch])
+              if (!c.shown) { await c.native.show(); c.shown = true }
             } else if (c.shown) { await c.native.hide(); c.shown = false }
           }
+          // The keyboard goes to the app when its window gains focus, to its editor when it has one
+          // open; an app shown beside the focused window does not take it.
+          if (!disposed && focused && !hadFocus) await (view.child?.shown ? view.child.native : view.native).setFocus()
+          hadFocus = focused
         } while (dirty && !disposed)
       } catch { /* closing a native view may race an already scheduled move */ }
       finally { busy = false }
@@ -195,7 +202,7 @@ export function PluginView({ app, appProps, host, winId }: { app: AppDef; appPro
     requestSync.current = schedule
     const resize = new ResizeObserver(schedule); resize.observe(element)
     const mutations = new MutationObserver(schedule)
-    mutations.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['style','class','data-focused','inert','aria-modal','role'] })
+    mutations.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['style','class','data-focused','data-exposed','inert','aria-modal','role'] })
     window.addEventListener('resize', schedule)
     const theme = onTokensChanged(() => {
       const c = current.current

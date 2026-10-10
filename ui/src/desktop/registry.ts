@@ -24,6 +24,11 @@ export interface AppDef {
   /** Hidden apps are launched by other apps, not from the dock. */
   hidden?: boolean
   /**
+   * Stays a floating window on a machine that tiles. For things opened briefly
+   * beside the work rather than as part of it, which should not rearrange it.
+   */
+  float?: boolean
+  /**
    * Content types this app can open, as `image/png` or `image/*`.
    *
    * Declared rather than hardcoded in the file manager, so a plugin that
@@ -42,11 +47,11 @@ export const APPS: AppDef[] = [
   { id: 'files',  title: 'Files',  icon: '📁', component: FileExplorer, w: 900, h: 560 },
   { id: 'editor', title: 'Editor', icon: '📝', component: Editor, w: 980, h: 640 },
   { id: 'terminal', title: 'Terminal', icon: '⌨️', component: Terminal, w: 1080, h: 650 },
-  { id: 'settings', title: 'Settings', icon: '⚙️', component: Settings, w: 920, h: 680 },
+  { id: 'settings', title: 'Settings', icon: '⚙️', component: Settings, w: 920, h: 680, float: true },
   { id: 'packages', title: 'Packages', icon: '📦', component: Packages, w: 900, h: 600 },
   {
     id: 'image', title: 'Preview', icon: '🖼', component: ImageViewer,
-    w: 820, h: 620, hidden: true, opens: ['image/*'],
+    w: 820, h: 620, hidden: true, float: true, opens: ['image/*'],
   },
 ]
 

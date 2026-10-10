@@ -263,7 +263,7 @@ pub async fn runtime_start(app: tauri::AppHandle, webview: Webview, ticket: Stri
         .disable_drag_drop_handler();
     let window = app.get_window("main").ok_or("Desktop window is unavailable")?;
     match window.add_child(builder, tauri::LogicalPosition::new(-10000., -10000.), tauri::LogicalSize::new(1., 1.)) {
-        Ok(view) => { let _ = view.hide(); changed(&app); Ok(label) }
+        Ok(view) => { let _ = view.hide(); let _ = crate::views::adopt(&view); changed(&app); Ok(label) }
         Err(e) => { lock(&state.sessions)?.remove(&label); Err(e.to_string()) }
     }
 }
@@ -478,6 +478,7 @@ pub async fn runtime_embed(app: tauri::AppHandle, webview: Webview, url: String)
     match created {
         Ok(view) => {
             let _ = view.hide();
+            let _ = crate::views::adopt(&view);
             if embedded.as_deref() != Some(label.as_str()) || !s.alive.load(Ordering::SeqCst) { drop(embedded); let _ = view.close(); return Err("Embedded view was replaced".into()); }
             Ok(label)
         }
@@ -690,7 +691,26 @@ pub(crate) async fn snapshot_view(app: &tauri::AppHandle, label: String) -> Resu
             Ok(if value.is_empty() { value } else { format!("data:image/png;base64,{value}") })
         }).await.map_err(|e| e.to_string())?;
     }
-    #[cfg(not(target_os = "macos"))] { let _ = label; Ok(String::new()) }
+    // WebKitGTK draws the picture itself; the desktop shows it while the view is hidden.
+    #[cfg(target_os = "linux")]
+    {
+        use std::sync::mpsc;
+        let view = app.get_webview(&label).ok_or("App is closed")?;
+        let (tx, rx) = mpsc::channel::<String>();
+        view.with_webview(move |platform| {
+            use webkit2gtk::{SnapshotOptions, SnapshotRegion, WebViewExt};
+            platform.inner().snapshot(SnapshotRegion::Visible, SnapshotOptions::NONE, None::<&gtk::gio::Cancellable>, move |result| {
+                let mut png = Vec::new();
+                let drawn = result.map(|surface| surface.write_to_png(&mut png).is_ok()).unwrap_or(false);
+                let _ = tx.send(if drawn { gtk::glib::base64_encode(&png).to_string() } else { String::new() });
+            });
+        }).map_err(|e| e.to_string())?;
+        return tauri::async_runtime::spawn_blocking(move || {
+            let value = rx.recv_timeout(Duration::from_secs(3)).map_err(|_| "Preview unavailable")?;
+            Ok(if value.is_empty() { value } else { format!("data:image/png;base64,{value}") })
+        }).await.map_err(|e| e.to_string())?;
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))] { let _ = (app, label); Ok(String::new()) }
 }
 
 #[cfg(test)]

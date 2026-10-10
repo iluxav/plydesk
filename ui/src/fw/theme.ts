@@ -23,9 +23,9 @@ function themeTokens(): Array<[string, string, TokenType]> {
   const out: Array<[string, string, TokenType]> = []
   for (const [appId, tokens] of declarations()) {
     for (const [name, decl] of Object.entries(tokens)) {
-      // Icons are drawn and images become a background elsewhere; neither is
-      // a CSS custom property.
-      if (decl.type === 'icon' || decl.type === 'image') continue
+      // Icons are drawn, images become a background elsewhere, and a choice
+      // is read by code; none is a CSS custom property.
+      if (decl.type === 'icon' || decl.type === 'image' || decl.type === 'choice') continue
       out.push([appId, name, decl.type])
     }
   }

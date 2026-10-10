@@ -7,6 +7,7 @@ mod keyboard;
 mod developer;
 mod runtime;
 mod index;
+mod views;
 
 use serde::Serialize;
 use plydesk_core::{
@@ -1038,6 +1039,14 @@ fn main() {
     // Before any webview exists, so WebKit opens the migrated store.
     #[cfg(target_os = "macos")]
     migrate_identity();
+    // WebKitGTK on Wayland with the NVIDIA driver dies at startup with
+    // "Error 71 (Protocol error)": the driver's explicit-sync path breaks the
+    // compositor protocol. Only that driver reads this variable, so it is a
+    // no-op everywhere else, and a value the user set themselves wins.
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("__NV_DISABLE_EXPLICIT_SYNC").is_none() {
+        std::env::set_var("__NV_DISABLE_EXPLICIT_SYNC", "1");
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_drag::init())
         .plugin(tauri_plugin_dialog::init())
@@ -1058,6 +1067,11 @@ fn main() {
             }
         })
         .setup(|_app| {
+            // On Linux, child views need a layer over the desktop to be placed in (see views.rs).
+            {
+                use tauri::Manager;
+                if let Some(desktop) = _app.get_webview("main") { views::setup(&desktop)?; }
+            }
             // Devtools in debug builds only: `make dev` opens them automatically.
             #[cfg(debug_assertions)]
             {
@@ -1103,7 +1117,8 @@ fn main() {
             write_text, make_dir, rename_path, copy_path, remove_path, upload_file,
             term_open, term_directory, term_write, term_resize, term_close, exec, list_plugins,
             forward_port, cancel_forward, list_forwards, open_url,
-            forward_socket, cancel_forward_socket
+            forward_socket, cancel_forward_socket,
+            views::native_view_adopt, views::native_view_place, views::native_view_snapshot
         ];
             move |invoke| {
                 if !runtime::allow_invoke(&invoke) {

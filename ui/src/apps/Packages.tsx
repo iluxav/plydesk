@@ -15,6 +15,9 @@ import type { PkgItem, PkgDetails } from '../fw'
 
 type Tab = 'search' | 'installed' | 'updates'
 
+/** The bus has no PackageKit to start: it is not installed on the machine. */
+const noPackageKit = (e: unknown) => /org\.freedesktop\.DBus\.Error\.(ServiceUnknown|NameHasNoOwner)|not activatable/.test(String(e))
+
 export function Packages({ setTitle }: { setTitle?: (t: string) => void }) {
   const fw = useFw()
   const [tab, setTab] = useState<Tab>('installed')
@@ -26,6 +29,8 @@ export function Packages({ setTitle }: { setTitle?: (t: string) => void }) {
   const [busy, setBusy] = useState(false)
   const [working, setWorking] = useState('')
   const [err, setErr] = useState('')
+  // The machine has no PackageKit (Arch and Omarchy do not ship it): say so, rather than show the bus error.
+  const [missing, setMissing] = useState(false)
   const [note, setNote] = useState('')
   const scroller = useRef<HTMLDivElement>(null)
   const request = useRef(0)
@@ -34,7 +39,7 @@ export function Packages({ setTitle }: { setTitle?: (t: string) => void }) {
   useEffect(() => { setTitle?.('Packages') }, [setTitle])
 
   useEffect(() => {
-    fw.pkg.backend().then(setBackend).catch(() => setBackend(''))
+    fw.pkg.backend().then(setBackend).catch(e => { setBackend(''); if (noPackageKit(e)) setMissing(true) })
   }, [fw])
 
   const loadTab = useCallback(async (which: Tab, q = '') => {
@@ -47,7 +52,11 @@ export function Packages({ setTitle }: { setTitle?: (t: string) => void }) {
       if (current !== request.current) return
       setItems(list)
       if (which === 'search' && q && list.length === 0) setNote(`nothing matches “${q}”`)
-    } catch (e) { if (current === request.current) { setErr(String(e)); setItems([]) } }
+    } catch (e) {
+      if (current !== request.current) return
+      setItems([])
+      if (noPackageKit(e)) setMissing(true); else setErr(String(e))
+    }
     finally { if (current === request.current) setBusy(false) }
   }, [fw])
 
@@ -102,6 +111,23 @@ export function Packages({ setTitle }: { setTitle?: (t: string) => void }) {
     overscan: 12,
   })
 
+
+  const retry = () => fw.pkg.backend().then(name => { setBackend(name); setMissing(false); void loadTab('installed') })
+    .catch(e => { if (!noPackageKit(e)) setErr(String(e)) })
+
+  if (missing) return (
+    <div className="desk-app packages-app">
+      {err && <div className="app-notice is-error" role="alert">{err}</div>}
+      <div className="app-empty-state">
+        <span className="app-empty-mark"><Icon id="desk:app" size={28} /></span>
+        <h2>This machine has no PackageKit</h2>
+        <p>Packages reads and installs software through PackageKit, the package service Linux desktops share, and this machine does not have it. Install it once on the machine, then try again:</p>
+        <code className="packages-install">sudo pacman -S packagekit</code>
+        <p><small>Debian and Ubuntu: <code>sudo apt install packagekit</code> · Fedora: <code>sudo dnf install PackageKit</code></small></p>
+        <button className="app-button" onClick={() => void retry()}>Try again</button>
+      </div>
+    </div>
+  )
 
   return (
     <div className="desk-app packages-app">

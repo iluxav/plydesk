@@ -2336,7 +2336,9 @@ dependencies = [
 name = "plydesk"
 version = "0.1.0"
 dependencies = [
+ "cairo-rs",
  "cc",
+ "gtk",
  "plydesk-core",
  "portable-pty",
  "serde",
@@ -2347,6 +2349,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-drag",
  "uuid",
+ "webkit2gtk",
 ]
 
 [[package]]

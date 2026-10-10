@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useWM, nextId, type Win } from '../wm/store'
 import { Window } from '../wm/Window'
+import { TileLayer } from '../wm/TileLayer'
 import { HostScope } from '../wm/host'
 import { Requires } from '../wm/Requires'
 import { DesktopFiles } from './DesktopFiles'
@@ -152,7 +153,7 @@ export function Desktop() {
       dispatch({ t: 'open', win: {
         id: nextId(appId), appId, host, title: app.title, icon: app.icon,
         x: Math.max(0, Math.min(40 + (n % 6) * 28, paneW - w)),
-        y: Math.max(0, Math.min(32 + (n % 6) * 26, paneH - h)), w, h,
+        y: Math.max(0, Math.min(32 + (n % 6) * 26, paneH - h)), w, h, float: app.float,
         props: app.shortcut ? { ...props, shortcut: structuredClone(app.shortcut) } : props,
       }})
     })
@@ -271,6 +272,7 @@ export function Desktop() {
               <DesktopFiles host={h} active={focused} />
 
               {mine.map(w => <DesktopWindow key={w.id} win={w} />)}
+              <TileLayer host={h} />
             </div>
           )
         })}

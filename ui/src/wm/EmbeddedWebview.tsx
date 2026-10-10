@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import { Webview } from '@tauri-apps/api/webview'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { LogicalPosition, LogicalSize } from '@tauri-apps/api/dpi'
+import { adoptView, placeView, unobstructed } from './nativeView'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 
@@ -32,6 +32,7 @@ export function EmbeddedWebview({ url, title, shortcutId, onCreated, onLoad, onR
     let created = false
     let ready = false
     let shown = false
+    let hadFocus = false
     let pending = false
     let dirty = false
     let frame = 0
@@ -61,38 +62,35 @@ export function EmbeddedWebview({ url, title, shortcutId, onCreated, onLoad, onR
         do {
           dirty = false
           const rect = element.getBoundingClientRect()
+          const focused = desktopWindow.dataset.focused === 'true'
           // Leave the dock/reveal area in the HTML surface's control, even
           // when a floating window is moved down over it.
           const dock = document.querySelector<HTMLElement>('.desktop-dock')
           const bottom = dock ? window.innerHeight - dock.offsetHeight - 18 : window.innerHeight
           const height = Math.min(rect.bottom, bottom) - rect.top
           const visible = rect.width > 1 && height > 1
-            && desktopWindow.dataset.focused === 'true'
+            // Stays live beside the focused window while nothing covers it. Not a website: a
+            // click inside it cannot reach the window manager, which would never learn it was focused.
+            && (focused || (!shortcutId && unobstructed(desktopWindow)))
             && !element.closest('[inert]')
             && !document.querySelector('[role="menu"], [aria-modal="true"], [data-window-switcher]')
           if (!visible) {
             if (shown) {
-              if (shortcutId) {
-                const snapshot = await invoke<string>('shortcut_web_snapshot', { label: view.label }).catch(() => '')
-                if (!disposed && snapshot) setPreview(snapshot)
-              }
-              await view.hide(); shown = false
+              // Its last picture stands in for it while it is hidden.
+              const snapshot = await invoke<string>('native_view_snapshot', { label: view.label }).catch(() => '')
+              if (!disposed && snapshot) setPreview(snapshot)
+              await view.hide(); shown = false; hadFocus = false
             }
             continue
           }
           const bounds = [rect.x, rect.y, rect.width, height].map(Math.round)
-          // A move only changes position. Avoid resizing the editor on every
-          // pointer move, which needlessly relayouts its contents during a drag.
-          if (bounds[0] !== previousBounds[0] || bounds[1] !== previousBounds[1])
-            await view.setPosition(new LogicalPosition(bounds[0], bounds[1]))
-          if (bounds[2] !== previousBounds[2] || bounds[3] !== previousBounds[3])
-            await view.setSize(new LogicalSize(bounds[2], bounds[3]))
+          await placeView(view, bounds, previousBounds)
           previousBounds = bounds
-          if (!disposed && !shown) {
-            await view.show()
-            await view.setFocus()
-            shown = true
-          }
+          // An exposed tile is on screen without being the focused window, so
+          // showing it must not take the keyboard — but gaining focus later must.
+          if (!disposed && !shown) { await view.show(); shown = true; hadFocus = false }
+          if (!disposed && focused && !hadFocus) await view.setFocus()
+          hadFocus = focused
         } while (dirty && !disposed)
       } catch (reason) { fail(reason) }
       finally { pending = false }
@@ -108,7 +106,7 @@ export function EmbeddedWebview({ url, title, shortcutId, onCreated, onLoad, onR
     resize.observe(element)
     const mutations = new MutationObserver(schedule)
     mutations.observe(document.body, { subtree: true, childList: true, attributes: true,
-      attributeFilter: ['style', 'class', 'data-focused', 'inert', 'aria-modal', 'role'] })
+      attributeFilter: ['style', 'class', 'data-focused', 'data-exposed', 'inert', 'aria-modal', 'role'] })
     window.addEventListener('resize', schedule)
 
     const prepare = async (current: Webview) => {
@@ -117,6 +115,7 @@ export function EmbeddedWebview({ url, title, shortcutId, onCreated, onLoad, onR
       try {
         await current.setAutoResize(false)
         await current.hide()
+        await adoptView(current.label)
         ready = true
         callbacks.current.onCreated?.(current.label)
         await sync()

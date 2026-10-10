@@ -37,6 +37,13 @@ export function declareCoreTokens() {
     radius:    { type: 'length', default: '12px', label: 'Window corners' },
 
     /**
+     * Floating windows are placed by hand. Tiling places them for you: each new
+     * window takes half of the focused one and closing it gives the half back.
+     */
+    layout:    { type: 'choice', default: 'floating', options: ['floating', 'tiling'], label: 'Window layout' },
+    gap:       { type: 'length', default: '8px', label: 'Gap between tiled windows', hint: 'In pixels.' },
+
+    /**
      * A file on this Mac, read once into a data URL rather than served over
      * file:// — it is one image chosen once, and this grants the webview no
      * filesystem access it would not otherwise have.
