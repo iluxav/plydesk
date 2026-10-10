@@ -4,6 +4,14 @@ A desktop for machines you reach over SSH. Files, services, packages,
 processes, a terminal and VS Code on any Linux box you can log into — with
 nothing installed on it.
 
+![VS Code running on a remote machine in a plydesk window, beside the Developer settings](screenshots/dev.png)
+
+| System and packages | Files |
+|---|---|
+| ![The System overview of a remote machine, with memory, disks and GPUs, beside the Packages list](screenshots/system.png) | ![Two Files windows browsing a remote home folder and /etc](screenshots/files.png) |
+| **Services and ports** | **Settings** |
+| ![The Services list and the listening Ports of a remote machine](screenshots/services.png) | ![Appearance settings: accent color, window corners, and floating or tiling windows](screenshots/settings.png) |
+
 Until September 2026 this project was called sshdesk. The first launch under
 the new name carries over saved machines, preferences, app approvals, and
 `~/.sshdesk`; software installed on a remote under `~/.sshdesk/opt` is moved
