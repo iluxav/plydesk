@@ -1,7 +1,8 @@
 name: release
 
 # Tag-driven, plus a manual button for dry runs. The tag is the version:
-# v0.2.0 produces plydesk-v0.2.0-aarch64.tar.gz.
+# v0.2.0 produces plydesk-v0.2.0-aarch64.tar.gz (macOS) and
+# plydesk-v0.2.0-linux-x86_64.tar.gz.
 on:
   push:
     tags: ['v*']
@@ -13,21 +14,45 @@ on:
 
 jobs:
   build:
-    # Both builds come from Apple Silicon runners, which cross-compile to Intel
-    # perfectly well. The obvious alternative — an Intel runner for the Intel
-    # build — means queueing for the macos-13 pool, which is being retired and
-    # left a job unassigned for a quarter of an hour on the first release.
+    # Both macOS builds come from Apple Silicon runners, which cross-compile to
+    # Intel perfectly well. The obvious alternative — an Intel runner for the
+    # Intel build — means queueing for the macos-13 pool, which is being retired
+    # and left a job unassigned for a quarter of an hour on the first release.
+    #
+    # Linux builds on the oldest supported Ubuntu: the binary links the
+    # system's WebKitGTK and glibc, so the build machine sets the floor for
+    # every distro that can run it.
+    #
+    # `asset` names the archive; `native` marks the builds this runner can
+    # execute, which are the ones the app runtime tests run on.
     strategy:
       fail-fast: false
       matrix:
         include:
-          - arch: aarch64
+          - asset: aarch64
             target: aarch64-apple-darwin
-          - arch: x86_64
+            os: macos-14
+            bundle: app
+            native: true
+          - asset: x86_64
             target: x86_64-apple-darwin
-    runs-on: macos-14
+            os: macos-14
+            bundle: app
+          - asset: linux-x86_64
+            target: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04
+            bundle: deb
+            native: true
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+
+      # WebKitGTK pulls in GTK, libsoup and JavaScriptCore; tao links dbus.
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libdbus-1-dev
 
       # Node 24: the UI tests import TypeScript sources directly and rely on
       # the type stripping that is on by default from 23.6.
@@ -74,10 +99,10 @@ jobs:
           node --experimental-vm-modules --test "ui/tests/*.test.mjs"
 
       # The app runtime tests cover the permission gateway. Native for the
-      # runner only: the Intel binaries cannot run here, and --target shares
-      # the release artifacts with the build below.
+      # runner only: the Intel Mac binaries cannot run on Apple Silicon, and
+      # --target shares the release artifacts with the build below.
       - name: App runtime tests
-        if: matrix.arch == 'aarch64'
+        if: matrix.native
         run: cargo test --release --manifest-path src-tauri/Cargo.toml --target ${{ matrix.target }}
 
       # The npm CLI, not `cargo install tauri-cli`. That step compiled the CLI
@@ -93,12 +118,12 @@ jobs:
           case "${GITHUB_REF_NAME}" in
             v[0-9]*) CONFIG="{\"version\":\"${GITHUB_REF_NAME#v}\"}" ;;
           esac
-          node ../ui/node_modules/@tauri-apps/cli/tauri.js build --target ${{ matrix.target }} --config "$CONFIG"
+          node ../ui/node_modules/@tauri-apps/cli/tauri.js build --target ${{ matrix.target }} --bundles ${{ matrix.bundle }} --config "$CONFIG"
 
       # A --target build nests the output under the triple.
       - name: Package
         id: package
-        working-directory: src-tauri/target/${{ matrix.target }}/release/bundle/macos
+        working-directory: src-tauri/target/${{ matrix.target }}/release/bundle
         run: |
           TAG="${GITHUB_REF_NAME}"
           # An `if` rather than `[ … ] && …`: that form survives `set -e` only
@@ -107,17 +132,25 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             TAG="${{ inputs.tag || 'dev' }}"
           fi
-          NAME="plydesk-${TAG}-${{ matrix.arch }}.tar.gz"
-          # No parent directory in the archive: install.sh expects plydesk.app
-          # at the top level.
-          tar -czf "$NAME" plydesk.app
+          NAME="plydesk-${TAG}-${{ matrix.asset }}.tar.gz"
+          if [ "${RUNNER_OS}" = "macOS" ]; then
+            # No parent directory in the archive: install.sh expects
+            # plydesk.app at the top level.
+            tar -czf "$NAME" -C macos plydesk.app
+          else
+            # The .deb's own tree with /usr taken off: bin/, lib/plydesk/ and
+            # share/, which install.sh unpacks into a prefix. Tauri looks for
+            # the bundled plugins at <bin>/../lib/plydesk, so the layout is
+            # what makes them load.
+            tar -czf "$NAME" -C deb/*/data/usr bin lib share
+          fi
           shasum -a 256 "$NAME" > "$NAME.sha256"
           echo "name=$NAME" >> "$GITHUB_OUTPUT"
           echo "path=$PWD/$NAME" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: plydesk-${{ matrix.arch }}
+          name: plydesk-${{ matrix.asset }}
           path: |
             ${{ steps.package.outputs.path }}
             ${{ steps.package.outputs.path }}.sha256
@@ -167,12 +200,17 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | sh
           ```
 
-          The app is not notarised by Apple. macOS quarantines anything a
-          *browser* downloads, so a downloaded archive would be refused —
-          installed with `curl` it is not quarantined and simply opens. The
-          installer verifies the checksum before writing anything.
+          The installer verifies the checksum before writing anything.
 
-          To remove it: `rm -rf /Applications/plydesk.app`
+          **macOS:** the app is not notarised by Apple. macOS quarantines
+          anything a *browser* downloads, so a downloaded archive would be
+          refused — installed with `curl` it is not quarantined and simply
+          opens. To remove it: `rm -rf /Applications/plydesk.app`
+
+          **Linux (x86_64):** installs into `~/.local` and adds a launcher
+          entry. It uses the system's WebKitGTK 4.1 (`webkit2gtk-4.1` on Arch,
+          `libwebkit2gtk-4.1-0` on Debian and Ubuntu); the installer names
+          anything missing.
           NOTES
           )" \
             dist/*

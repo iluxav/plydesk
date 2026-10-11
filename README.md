@@ -23,14 +23,20 @@ the next time that machine is checked.
 curl -fsSL https://raw.githubusercontent.com/iluxav/plydesk/main/install.sh | sh
 ```
 
-macOS, Apple Silicon or Intel. The installer checks the published SHA256 before
-writing anything, and puts `plydesk.app` in `/Applications`.
+macOS (Apple Silicon or Intel) and x86_64 Linux. The installer checks the
+published SHA256 before writing anything.
 
-`curl` rather than a download link on purpose: the app is not notarised by
-Apple, and macOS quarantines anything a *browser* fetches — a downloaded
-archive would be refused by Gatekeeper. Nothing curl fetches is quarantined, so
-installed this way it simply opens. Removing it is `rm -rf
-/Applications/plydesk.app`; nothing else is written outside `~/.plydesk`.
+On macOS it puts `plydesk.app` in `/Applications`. `curl` rather than a
+download link on purpose: the app is not notarised by Apple, and macOS
+quarantines anything a *browser* fetches — a downloaded archive would be
+refused by Gatekeeper. Nothing curl fetches is quarantined, so installed this
+way it simply opens. Removing it is `rm -rf /Applications/plydesk.app`;
+nothing else is written outside `~/.plydesk`.
+
+On Linux it installs into `~/.local` (`bin/plydesk`, `lib/plydesk`, and a
+launcher entry under `share/`), without root. It uses the system's WebKitGTK
+4.1 — `webkit2gtk-4.1` on Arch, `libwebkit2gtk-4.1-0` on Debian and Ubuntu —
+and says so if it is missing. The installer prints the exact paths to remove.
 
 ## What it does
 
