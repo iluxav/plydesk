@@ -830,8 +830,10 @@ pub fn write_file(h: &mut Host, path: &str, content: &str) -> Result<()> {
     h.sftp()?.write(path, content.as_bytes())
 }
 
+/// The desktop asks for `~/Desktop` on a server that has none.
 pub fn mkdir(h: &mut Host, path: &str) -> Result<()> {
-    h.sftp()?.mkdir(path)
+    let path = expand(h, path)?;
+    h.sftp()?.mkdir(&path)
 }
 
 pub fn rename(h: &mut Host, from: &str, to: &str) -> Result<()> {
@@ -1044,10 +1046,14 @@ mod live_tests {
             assert_eq!(read_file(&mut h, &format!("{home}/{stamp}/a.txt"), 100).unwrap().text, "alpha");
             rename(&mut h, &home_copy, &format!("{home_copy}-moved")).unwrap();
             assert_eq!(read_file(&mut h, &format!("{home}/{stamp}-moved/a.txt"), 100).unwrap().text, "alpha");
+            // Not `$HOME/~/…`, which fails with "No such file".
+            mkdir(&mut h, &format!("{home_copy}-made")).unwrap();
+            assert!(list_dir(&mut h, &format!("{home}/{stamp}-made")).unwrap().is_empty());
         }));
         let _ = remove(&mut h, &base, true);
         let _ = remove(&mut h, &format!("{home}/{stamp}"), true);
         let _ = remove(&mut h, &format!("{home}/{stamp}-moved"), true);
+        let _ = remove(&mut h, &format!("{home}/{stamp}-made"), true);
         let _ = std::fs::remove_dir_all(&local);
         if let Err(panic) = outcome { std::panic::resume_unwind(panic) }
     }
