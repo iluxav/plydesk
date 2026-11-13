@@ -17,6 +17,8 @@ the new name carries over saved machines, preferences, app approvals, and
 `~/.sshdesk`; software installed on a remote under `~/.sshdesk/opt` is moved
 the next time that machine is checked.
 
+What it can do today and what has changed: [osfeed.dev/p/iluxav/plydesk](https://osfeed.dev/p/iluxav/plydesk).
+
 ## Install
 
 ```sh
